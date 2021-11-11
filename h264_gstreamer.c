@@ -7,7 +7,7 @@
 int
 main (int argc, char *argv[])
 {
-  GstElement *pipeline, *source, *parser, *decoder, *queue, *sink;
+  GstElement *pipeline, *source, *parser, *decode, *sink;
   GstBus *bus;
   GstMessage *msg;
   GstStateChangeReturn ret;
