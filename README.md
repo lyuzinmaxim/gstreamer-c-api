@@ -9,7 +9,9 @@ Dependencies:
 * gcc (Ubuntu/Linaro 7.5.0-3ubuntu1~18.04) 7.5.0
 
 
-1. **h264_gstreamer.c**
+# 1. **h264_gstreamer.c**
+
+C-code  makes the same as:
 
 ```gst-launch-1.0 filesrc location = sample_720p.h264 ! h264parse ! nvv4l2decoder !  autovideosink sync=0```
  
@@ -17,8 +19,13 @@ to compile
 
 ```gcc h264_gstreamer.c -o h264_gstreamer `pkg-config --cflags --libs gstreamer-1.0` ```
 
+to run
 
-2. **test_video.c**
+```./h264_gstreamer.c```
+
+# 2. **test_video.c**
+
+C-code  makes the same as:
 
 ```gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' ! queue ! autovideosink sync=false```
 
@@ -26,12 +33,33 @@ to compile
 
 ```gcc test_video.c -o test_video `pkg-config --cflags --libs gstreamer-1.0` ```
 
+to run
 
-3. **udp_encoded_stream.c**
+```./test_video.c```
 
-Not only Jetson board, but host PC needed to run this code. Make sure there is Ethernet connections between them, IP adress of host should be 192.168.0.1, port 5000 should be open. Jetson should be in the same subnet, with IP 192.168.0.0
+
+# 3. **udp_encoded_stream.c**
+
+Not only Jetson board, but host PC needed to run this code. Make sure there is Ethernet connections between them, IP adress of host should be 192.168.0.1, port 5000 should be open. Jetson should be in the same subnet, with IP 192.168.0.0. Host commands are from precompiled binaries, not using C API.
+
+!Before starting, receiving code (on host) should be ran
+
+```gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
+! rtph264depay ! decodebin ! videoconvert ! fpsdisplaysink sync=False
+```
+
+
+C-code  makes the same as:
 
 ``` ifconfig eth0 192.168.0.0 && \
 gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' ! \
-! queue ! nvvideoconvert !  nvv4l2h264enc  bitrate=1000000 ! rtph264pay ! udpsink host=192.168.0.1 port=5000```
+! queue ! nvvideoconvert !  nvv4l2h264enc  bitrate=1000000 ! rtph264pay ! udpsink host=192.168.0.1 port=5000
+```
 
+to compile
+
+```gcc udp_encoded_stream.c -o udp_encoded_stream `pkg-config --cflags --libs gstreamer-1.0```
+
+to run (notice that there Jetson's IP-adress will be changed)
+
+```sudo ifconfig eth0 192.168.0.0 && ./udp_encoded_stream```
