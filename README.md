@@ -25,3 +25,13 @@ to compile
 to compile
 
 ```gcc test_video.c -o test_video `pkg-config --cflags --libs gstreamer-1.0` ```
+
+
+3. **udp_encoded_stream.c**
+
+Not only Jetson board, but host PC needed to run this code. Make sure there is Ethernet connections between them, IP adress of host should be 192.168.0.1, port 5000 should be open. Jetson should be in the same subnet, with IP 192.168.0.0
+
+``` ifconfig eth0 192.168.0.0 && \
+gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' ! \
+! queue ! nvvideoconvert !  nvv4l2h264enc  bitrate=1000000 ! rtph264pay ! udpsink host=192.168.0.1 port=5000```
+
