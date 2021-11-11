@@ -2,7 +2,8 @@
 #include <glib.h>
 #include <stdio.h>
 
-// gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' ! queue ! autovideosink sync=false 
+// gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' \
+// ! queue ! autovideosink sync=false 
 
 int
 main (int argc, char *argv[])
