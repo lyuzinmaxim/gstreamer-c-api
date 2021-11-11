@@ -19,20 +19,19 @@ main (int argc, char *argv[])
   source = gst_element_factory_make ("filesrc", "source");
   parser = gst_element_factory_make ("h264parse","parser");
   decoder = gst_element_factory_make ("nvv4l2decoder","decoder");
-  queue = gst_element_factory_make ("queue","queue");
   sink = gst_element_factory_make ("autovideosink", "sink");
 
   
   /* Create the empty pipeline */
   pipeline = gst_pipeline_new ("maxim-pipeline");
 
-  if (!pipeline || !source || !parser || !decoder || !queue || !sink) {
+  if (!pipeline || !source || !parser || !decoder || !sink) {
     g_printerr ("Not all elements could be created.\n");
     return -1;
   }
 
   /* Build the pipeline */
-  gst_bin_add_many (GST_BIN (pipeline), source, parser, decoder, sink, queue, NULL);
+  gst_bin_add_many (GST_BIN (pipeline), source, parser, decoder, sink, NULL);
   
   if (!gst_element_link(source,parser)){
 		  g_printerr ("Source->parser problem\n");
