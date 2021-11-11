@@ -17,7 +17,6 @@ main (int argc, char *argv[])
 
   /* Create the elements */
   source = gst_element_factory_make ("filesrc", "source");
-//  demuxer = gst_element_factory_make ("qtdemux","demuxer"); //really needed!
   parser = gst_element_factory_make ("h264parse","parser");
   decoder = gst_element_factory_make ("nvv4l2decoder","decoder");
   queue = gst_element_factory_make ("queue","queue");
