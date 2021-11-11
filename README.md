@@ -16,3 +16,12 @@ Dependencies:
 to compile
 
 ```gcc h264_gstreamer.c -o h264_gstreamer `pkg-config --cflags --libs gstreamer-1.0` ```
+
+
+2. **test_video.c**
+
+```gst-launch-1.0 videotestsrc pattern=ball ! 'video/x-raw, format=(string)I420, width=(int)1920, height=(int)1080, framerate=(fraction)30/1' ! queue ! autovideosink sync=false```
+
+to compile
+
+```gcc test_video.c -o test_video `pkg-config --cflags --libs gstreamer-1.0` ```
