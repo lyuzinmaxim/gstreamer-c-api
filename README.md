@@ -64,7 +64,7 @@ to run (notice that there Jetson's IP-adress will be changed)
 
 ```sudo ifconfig eth0 192.168.0.0 && ./udp_encoded_stream```
 
-# 3. **tee_encoded_stream.c**
+# 4. **tee_encoded_stream.c**
 
 Not only Jetson board, but host PC too needed to run this code. Make sure there is Ethernet connections between them, IP adress of host should be 192.168.0.1, port 5000 should be open. Jetson should be in the same subnet, with IP 192.168.0.0. Host commands are from precompiled binaries, not using C API.
 
