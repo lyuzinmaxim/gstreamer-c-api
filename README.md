@@ -92,3 +92,12 @@ to run (notice that there Jetson's IP-adress will be changed)
 
 ```sudo ifconfig eth0 192.168.0.0 && ./tee_encoded_stream```
 
+
+# !
+
+```ifconfig eth0 192.168.0.0 && \
+gst-launch-1.0 filesrc location = /opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.h264 ! h264parse  ! nvv4l2decoder !  tee name=t \
+t. ! queue ! m.sink_0 nvstreammux name = m \
+batch-size=1 width=1920 height=1080 ! nvinfer config-file-path=dstest1_pgie_config.txt ! nvvideoconvert ! nvdsosd ! nvegltransform ! nveglglessink \
+t. ! nvvideoconvert ! nvv4l2h264enc  bitrate=4000000 ! rtph264pay ! udpsink host=192.168.0.1 port=5000 sync=True
+```
