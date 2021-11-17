@@ -44,7 +44,8 @@ Not only Jetson board, but host PC too needed to run this code. Make sure there 
 
 !Before starting, receiving code (on host) should be ran
 
-```gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
+```
+gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
 ! rtph264depay ! decodebin ! videoconvert ! fpsdisplaysink sync=False
 ```
 
@@ -72,7 +73,8 @@ In my application low latency and no freezes/artifacts are needed. So was chosen
 
 !Before starting, receiving code (on host) should be ran
 
-```gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
+```
+gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
 ! rtph264depay ! decodebin ! videoconvert ! fpsdisplaysink sync=False
 ```
 
@@ -100,7 +102,8 @@ Not only Jetson board, but host PC too needed to run this code. Make sure there 
 !Before starting, receiving code (on host) should be ran
 
 
-```gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
+```
+gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" \
 ! rtph264depay ! decodebin ! videoconvert ! fpsdisplaysink sync=False
 ```
 C-code makes the same as:
