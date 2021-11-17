@@ -105,7 +105,7 @@ Not only Jetson board, but host PC too needed to run this code. Make sure there 
 ```
 C-code makes the same as:
 
-![GStreamer send&infere from file](https://github.com/lyuzinmaxim/gstreamer-c-api/docs/GStreamer send&infere from file.drawio.png)
+![GStreamer send&infere from file](docs/GStreamer_send&infere_from_file.png)
 
 ```
 ifconfig eth0 192.168.0.0 && \
@@ -116,5 +116,7 @@ t. ! nvvideoconvert ! nvv4l2h264enc  bitrate=4000000 ! rtph264pay ! udpsink host
 ```
 
 Because it's based on NVidia DeepStream example apps, compile it using Makefile
-
+```
+sudo make
+```
 
