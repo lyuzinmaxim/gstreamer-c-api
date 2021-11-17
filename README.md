@@ -105,6 +105,8 @@ Not only Jetson board, but host PC too needed to run this code. Make sure there 
 ```
 C-code makes the same as:
 
+!(/docs/GStreamer send&infere from file.drawio.png)
+
 ```
 ifconfig eth0 192.168.0.0 && \
 gst-launch-1.0 filesrc location = /opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.h264 ! h264parse  ! nvv4l2decoder !  tee name=t \
