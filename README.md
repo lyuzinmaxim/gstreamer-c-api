@@ -105,7 +105,7 @@ Not only Jetson board, but host PC too needed to run this code. Make sure there 
 ```
 C-code makes the same as:
 
-![GStreamer send&infere from file](/docs/GStreamer send&infere from file.drawio.png)
+![GStreamer send&infere from file](https://github.com/lyuzinmaxim/gstreamer-c-api/docs/GStreamer send&infere from file.drawio.png)
 
 ```
 ifconfig eth0 192.168.0.0 && \
