@@ -148,24 +148,26 @@ int
 main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
-  GstElement *pipeline = NULL, *source = NULL, *h264parser = NULL,
-      *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL,
-      *nvosd = NULL;
+  GstElement *pipeline, *source, *parser, *decoder, *tee;
+  GstElement *queue_local, *muxer, *infer, *converter_local, *nvosd, *videosink;
+  GstElement *queue_enet, *converter_enet, *encoder, *payer, *enetsink;
 
   GstElement *transform = NULL;
   GstBus *bus = NULL;
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL;
-
+  GstPad *sinkpad, *srcpad;
+  GstPad *tee_enet_pad, *queue_enet_pad;
+  
   int current_device = -1;
   cudaGetDevice(&current_device);
   struct cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, current_device);
   /* Check input arguments */
-  if (argc != 2) {
+  /*if (argc != 2) {
     g_printerr ("Usage: %s <H264 filename>\n", argv[0]);
     return -1;
-  }
+  }*/
 
   /* Standard GStreamer initialization */
   gst_init (&argc, &argv);
@@ -175,42 +177,27 @@ main (int argc, char *argv[])
   /* Create Pipeline element that will form a connection of other elements */
   pipeline = gst_pipeline_new ("dstest1-pipeline");
 
-  /* Source element for reading from the file */
-  source = gst_element_factory_make ("filesrc", "file-source");
-
-  /* Since the data format in the input file is elementary h264 stream,
-   * we need a h264parser */
-  h264parser = gst_element_factory_make ("h264parse", "h264-parser");
-
-  /* Use nvdec_h264 for hardware accelerated decode on GPU */
+  source = gst_element_factory_make ("filesrc", "source");
+  parser = gst_element_factory_make ("h264parse", "h264-parser");
   decoder = gst_element_factory_make ("nvv4l2decoder", "nvv4l2-decoder");
+  tee = gst_element_factory_make ("tee", "tee");
 
-  /* Create nvstreammux instance to form batches from one or more sources. */
-  streammux = gst_element_factory_make ("nvstreammux", "stream-muxer");
-
-  if (!pipeline || !streammux) {
+  queue_local = gst_element_factory_make ("queue","queue_local");
+  muxer = gst_element_factory_make ("nvstreammux", "stream-muxer");
+  if (!pipeline || !muxer) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
-
-  /* Use nvinfer to run inferencing on decoder's output,
-   * behaviour of inferencing is set through config file */
-  pgie = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
-
-  /* Use convertor to convert from NV12 to RGBA as required by nvosd */
-  nvvidconv = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter");
-
-  /* Create OSD to draw on the converted RGBA buffer */
+  infer = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
+  converter_local = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter");
   nvosd = gst_element_factory_make ("nvdsosd", "nv-onscreendisplay");
-
-  /* Finally render the osd output */
   if(prop.integrated) {
     transform = gst_element_factory_make ("nvegltransform", "nvegl-transform");
   }
-  sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
+  videosink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
 
-  if (!source || !h264parser || !decoder || !pgie
-      || !nvvidconv || !nvosd || !sink) {
+  if (!source || !parser || !decoder || !tee || !infer
+      || !converter_local || !nvosd || !videosink) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
@@ -220,19 +207,31 @@ main (int argc, char *argv[])
     return -1;
   }
 
-  /* we set the input filename to the source element */
-  g_object_set (G_OBJECT (source), "location", argv[1], NULL);
+  queue_enet = gst_element_factory_make ("queue","queue_enet");  
+  converter_enet = gst_element_factory_make ("nvvideoconvert", "converter_enet"); 
+  encoder = gst_element_factory_make ("nvv4l2h264enc","encoder");
+  payer = gst_element_factory_make ("rtph264pay","payer");
+  enetsink = gst_element_factory_make("udpsink","enetsink");
+  
+/* Set elements properties */
 
-  g_object_set (G_OBJECT (streammux), "batch-size", 1, NULL);
-
-  g_object_set (G_OBJECT (streammux), "width", MUXER_OUTPUT_WIDTH, "height",
+  g_object_set (source, "location", "/opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.h264",NULL);
+  g_object_set (muxer, "batch-size", 1, NULL);
+  g_object_set (muxer, "width", MUXER_OUTPUT_WIDTH, "height",
       MUXER_OUTPUT_HEIGHT,
       "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
-
-  /* Set all the necessary properties of the nvinfer element,
-   * the necessary ones are : */
-  g_object_set (G_OBJECT (pgie),
+  g_object_set (infer,
       "config-file-path", "dstest1_pgie_config.txt", NULL);
+
+  g_object_set (encoder, "bitrate", 2000000, NULL);
+  g_object_set (encoder, "maxperf-enable", 1, NULL); //not sure if causes small latency 
+  g_object_set (encoder, "preset-level", 4, NULL); //not sure too
+  g_object_set (encoder, "profile", 2, NULL); //really makes latency small
+  g_object_set (encoder, "ratecontrol-enable", 1, NULL); //not sure
+  
+  g_object_set (enetsink, "host", "192.168.0.1", NULL);
+  g_object_set (enetsink, "port", 5000, NULL);
+  g_object_set (enetsink, "sync", 0, NULL);
 
   /* we add a message handler */
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
@@ -243,26 +242,29 @@ main (int argc, char *argv[])
   /* we add all elements into the pipeline */
   if(prop.integrated) {
     gst_bin_add_many (GST_BIN (pipeline),
-        source, h264parser, decoder, streammux, pgie,
-        nvvidconv, nvosd, transform, sink, NULL);
+        source, parser, decoder,tee,
+        queue_local, muxer, infer, converter_local, nvosd, transform, videosink,
+        queue_enet, converter_enet, encoder, payer, enetsink, NULL);
   }
   else {
-  gst_bin_add_many (GST_BIN (pipeline),
-      source, h264parser, decoder, streammux, pgie,
-      nvvidconv, nvosd, sink, NULL);
+    gst_bin_add_many (GST_BIN (pipeline),
+        source, parser, decoder,tee,
+        queue_local, muxer, infer, converter_local, nvosd, videosink,
+        queue_enet, converter_enet, encoder, payer, enetsink, NULL);
   }
 
-  GstPad *sinkpad, *srcpad;
+  /* Link elements */
+
   gchar pad_name_sink[16] = "sink_0";
   gchar pad_name_src[16] = "src";
 
-  sinkpad = gst_element_get_request_pad (streammux, pad_name_sink);
+  sinkpad = gst_element_get_request_pad (muxer, pad_name_sink);
   if (!sinkpad) {
     g_printerr ("Streammux request sink pad failed. Exiting.\n");
     return -1;
   }
 
-  srcpad = gst_element_get_static_pad (decoder, pad_name_src);
+  srcpad = gst_element_get_request_pad (tee, "src_%u");
   if (!srcpad) {
     g_printerr ("Decoder request src pad failed. Exiting.\n");
     return -1;
@@ -272,7 +274,27 @@ main (int argc, char *argv[])
       g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
       return -1;
   }
+  
+  tee_enet_pad = gst_element_get_request_pad (tee,"src_%u");
+  if (!tee_enet_pad) {
+    g_printerr ("Tee enet pad request failed. Exiting.\n");
+    return -1;
+  }
 
+  queue_enet_pad = gst_element_get_static_pad (queue_enet,"sink");
+  if (!queue_enet_pad) {
+    g_printerr ("Tee enet pad request failed. Exiting.\n");
+    return -1;
+  }
+
+  if (gst_pad_link (tee_enet_pad, queue_enet_pad) != GST_PAD_LINK_OK){
+    g_printerr ("Tee goes wrong\n");
+    gst_object_unref (pipeline);
+    return -1;
+  }
+
+  gst_object_unref (tee_enet_pad);
+  gst_object_unref (queue_enet_pad);
   gst_object_unref (sinkpad);
   gst_object_unref (srcpad);
 
@@ -280,29 +302,35 @@ main (int argc, char *argv[])
   /* file-source -> h264-parser -> nvh264-decoder ->
    * nvinfer -> nvvidconv -> nvosd -> video-renderer */
 
-  if (!gst_element_link_many (source, h264parser, decoder, NULL)) {
+  if (!gst_element_link_many (source, parser, decoder, tee, NULL)) {
     g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
 
   if(prop.integrated) {
-    if (!gst_element_link_many (streammux, pgie,
-        nvvidconv, nvosd, transform, sink, NULL)) {
+    if (!gst_element_link_many (muxer, infer,
+        converter_local, nvosd, transform, videosink, NULL)) {
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }
   }
   else {
-    if (!gst_element_link_many (streammux, pgie,
-        nvvidconv, nvosd, sink, NULL)) {
+    if (!gst_element_link_many (muxer, infer,
+        converter_local, nvosd, videosink, NULL)) {
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }
   }
-
+  
+  if (!gst_element_link_many (queue_enet, converter_enet, encoder, payer, enetsink, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
+    return -1;
+  }
+  
   /* Lets add probe to get informed of the meta data generated, we add probe to
    * the sink pad of the osd element, since by that time, the buffer would have
    * had got all the metadata. */
+  
   osd_sink_pad = gst_element_get_static_pad (nvosd, "sink");
   if (!osd_sink_pad)
     g_print ("Unable to get sink pad\n");
