@@ -127,4 +127,6 @@ Because it's based on NVidia DeepStream example apps, compile it using Makefile
 ```
 sudo make
 ```
+to run (notice that there Jetson's IP-adress will be changed)
 
+```sudo ifconfig eth0 192.168.0.0 && ./deepstream-test1-app```
