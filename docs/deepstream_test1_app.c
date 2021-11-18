@@ -217,7 +217,7 @@ main (int argc, char *argv[])
 		  return -1;
   }
   
-/*  if(prop.integrated) {
+  if(prop.integrated) {
     if (!gst_element_link_many (queue_local, muxer, infer, converter_local, nvosd, transform, enetsink, NULL)) {
       g_printerr ("Local branch cannot be created.\n");
       return -1;
@@ -228,7 +228,7 @@ main (int argc, char *argv[])
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }
-  }*/
+  }
 
   if (!gst_element_link_many(queue_enet, converter_enet, encoder, payer, enetsink,NULL)){
                   g_printerr ("Queue->convert->encode->pay->udpsink problem\n");
