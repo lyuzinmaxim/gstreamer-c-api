@@ -129,4 +129,6 @@ sudo make
 ```
 to run (notice that there Jetson's IP-adress will be changed)
 
-```sudo ifconfig eth0 192.168.0.0 && ./deepstream-test1-app```
+```
+sudo ifconfig eth0 192.168.0.0 && ./deepstream-test1-app
+```
