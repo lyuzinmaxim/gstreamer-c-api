@@ -132,3 +132,7 @@ to run (notice that there Jetson's IP-adress will be changed)
 ```
 sudo ifconfig eth0 192.168.0.0 && ./deepstream-test1-app
 ```
+
+# 6. CSI camera as input, make inference & encoding at the same time
+
+Here I use Raspberry Camerav1
