@@ -66,8 +66,8 @@ main (int argc, char *argv[])
   
   filtercaps = gst_caps_new_simple ("video/x-raw",
 	  "format",G_TYPE_STRING,"I420",
-          "width", G_TYPE_INT, 1920,
-          "height", G_TYPE_INT, 1080,
+          "width", G_TYPE_INT, 192,
+          "height", G_TYPE_INT, 108,
           "framerate",GST_TYPE_FRACTION,30,1,
  	  NULL);
   
