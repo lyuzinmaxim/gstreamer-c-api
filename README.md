@@ -95,7 +95,7 @@ t. ! queue !  autovideosink
 ```
 to compile
 
-```gcc tee_encoded_stream.c -o tee_encoded_stream `pkg-config --cflags --libs gstreamer-1.0```
+```gcc tee_encoded_stream.c -o tee_encoded_stream `pkg-config --cflags --libs gstreamer-1.0 ` ```
 
 to run (notice that there Jetson's IP-adress will be changed)
 
