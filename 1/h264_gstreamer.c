@@ -53,7 +53,7 @@ main (int argc, char *argv[])
 
 
   /* Modify the source's properties */
-  g_object_set (source, "location","sample_720p.h264", NULL);
+  g_object_set (source, "location","/opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.h264", NULL);
   g_object_set (sink, "sync", "FALSE", NULL);
   
   /* Start playing */
