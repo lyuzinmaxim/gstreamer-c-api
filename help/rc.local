@@ -1,0 +1,39 @@
+#!/bin/bash
+
+#sudo service nvargus-daemon restart && \
+
+#nvpmodel -m 0 && \
+#echo -e "10 W mode is ON \tn" && \
+#sleep 3 && \
+#echo -e "It was 3 seconds driver initializatior" && \
+#ifconfig eth0 192.168.0.15 && \
+#echo -e "IP adress was set" && \
+#gst-launch-1.0 nvarguscamerasrc sensor-id=0 bufapi-version=1 ! "video/x-raw(memory:NVMM),width=1920,height=1080,format=(string)NV12,framerate=30/1" ! nvvideoconvert ! nvv4l2h264enc  bitrate=6000000  maxperf-enable=1 profile=2 ! h264parse config-interval=-1 ! rtph264pay ! udpsink host=192.168.0.203 port=31990 sync=True
+
+#exit 0
+
+
+#Temporal:
+#nvpmodel -m 0 && \
+#echo -e "10 W mode is ON \tn" && \
+#sleep 3 && \
+#echo -e "It was 3 seconds driver initializatior" && \
+#ifconfig eth0 10.0.100.10/16 && \
+#ip route add 10.0.111.10 via 10.0.100.230 dev eth0 && \
+#echo -e "IP adress and route were set" && \
+#gst-launch-1.0 nvarguscamerasrc sensor-id=0 bufapi-version=1 ! "video/x-raw(memory:NVMM),width=1920,height=1080,format=(string)NV12,framerate=30/1" ! nvvideoconvert ! nvv4l2h264enc  bitrate=6000000  maxperf-enable=1 profile=2 ! h264parse config-interval=-1 ! rtph264pay ! udpsink host=10.0.111.10 port=31990 sync=True
+
+#exit 0
+
+#GSTREAMER-C
+nvpmodel -m 0 && \
+echo -e "10 W mode is ON \tn" && \
+sleep 3 && \
+echo -e "It was 3 seconds driver initializatior" && \
+ifconfig eth0 10.0.100.10/16 && \
+echo -e "IP adress and route were set" && \
+cd /home/maxim/gstreamer-c-api/7/ && \
+./deepstream_custom_app 
+
+exit 0
+
