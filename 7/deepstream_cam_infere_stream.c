@@ -15,7 +15,7 @@
 #define PGIE_CLASS_ID_VEHICLE 0
 #define PGIE_CLASS_ID_PERSON 2
 
-#define PGIE_CONFIG_FILE  "dstest4_pgie_config.txt"
+#define PGIE_CONFIG_FILE  "infer_config_light.txt"
 //#define PGIE_CONFIG_FILE "config_infer_primary.txt"
 #define MSCONV_CONFIG_FILE "dstest4_msgconv_config.txt"
 
@@ -37,7 +37,7 @@ static gchar *conn_str = NULL;
 static gchar *proto_lib = "libnvds_amqp_proto.so";
 static gint schema_type = 0;
 static gint msg2p_meta = 0;
-static gint frame_interval = 30;
+static gint frame_interval = 1;
 static gboolean display_off = FALSE;
 
 gint frame_number = 0;
@@ -498,7 +498,7 @@ main (int argc, char *argv[])
   g_object_set (payer, "config-interval", -1, NULL); //not surepayer
 
   g_object_set (enetsink, "host", "10.0.111.10", NULL);
-  g_object_set (enetsink, "port", 5000, NULL);
+  g_object_set (enetsink, "port", 31990, NULL);
   g_object_set (enetsink, "sync", FALSE, NULL);
 
   g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
@@ -593,6 +593,7 @@ main (int argc, char *argv[])
     g_printerr ("Elements could not be linked2. Exiting.\n");
     return -1;
   }
+
 
   if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
     g_printerr ("Elements could not be linked3. Exiting.\n");
