@@ -147,3 +147,5 @@ t. ! queue ! m.sink_0 nvstreammux name = m \
 batch-size=1 width=1920 height=1080  batched-push-timeout=33 num-surfaces-per-frame=1 ! nvinfer config-file-path=dstest1_pgie_config.txt ! nvvideoconvert ! nvdsosd ! nvegltransform ! nveglglessink sync=False \
 t. ! nvvideoconvert ! nvv4l2h264enc  bitrate=4000000 ! rtph264pay ! udpsink host=192.168.0.1 port=5000 sync=True
 ```
+
+![Deepstream camera src and infere](https://github.com/lyuzinmaxim/gstreamer-c-api/blob/bb0d47e5b89d2969c3f9a99a92d2bf99464b6faf/docs/gstreamer_camera_src_infere.png)
