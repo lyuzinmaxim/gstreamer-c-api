@@ -11,7 +11,7 @@ gst-launch-1.0 udpsrc port=5000 caps = "application/x-rtp, media=(string)video,c
 ```
 C-code makes the same as:
 
-![GStreamer send&infere from file](docs/GStreamer_send&infere_from_file.drawio.png)
+![GStreamer send&infere from file](https://github.com/lyuzinmaxim/gstreamer-c-api/blob/6df9162ed91c13e4fc6318a622599cbdfa34bcba/docs/GStreamer%20send&infere%20from%20file.drawio.png)
 
 ```
 ifconfig eth0 192.168.0.0 && \
