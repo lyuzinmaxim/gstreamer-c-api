@@ -176,3 +176,5 @@ RabbitMQ settings:
 - link that queue to new exchange named **modem_exchange** with routing key **modem**
 - wait for connecting :)
 - P.S. You must can ping jetson from host PC and must be able to send cimple python commands from jetson to host (using PIKA library)
+
+I use SimpleRabbitmqClient (C++) over rammitmq-c (C) as consumer.
