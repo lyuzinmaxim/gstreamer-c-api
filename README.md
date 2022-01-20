@@ -139,7 +139,7 @@ sudo ifconfig eth0 192.168.0.0 && ./deepstream-test1-app
 
 Here I use Raspberry Camera HQ with sensor IMX477 via CSI connection. 
 
-Before start working, run as superuser python script in ```/jetson_io/``` directory to configure drivers.
+Before start working, run as superuser python script in ``/opt/nvidia/jetson_io/``` directory to configure drivers.
 
 ```
 gst-launch-1.0 nvarguscamerasrc sensor-id=0 bufapi-version=1 ! "video/x-raw(memory:NVMM),width=1920,height=1080,format=(string)NV12,framerate=60/1" ! tee name=t \
