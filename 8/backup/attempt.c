@@ -158,7 +158,7 @@ int
 main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
-  GstElement *pipeline, *source, *filter, *converter;
+  GstElement *source, *filter, *converter;
   GstElement *videosink;
   GstCaps *filtercaps;
   GstBus *bus = NULL;
