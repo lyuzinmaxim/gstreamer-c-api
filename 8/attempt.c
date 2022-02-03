@@ -139,7 +139,6 @@ cb_newpad (GstElement * element, GstPad * element_src_pad, gpointer data)
 
   //GstElement *converter = gst_element_factory_make ("nvvideoconvert", "parser-pre-recordbin");
   GstElement *parser = gst_element_factory_make ("h264parse", "parser");
-
   gst_bin_add_many (GST_BIN (pipeline), parser, NULL);
 
   if (!gst_element_link_many (tee, parser, nvdssrCtx->recordbin, NULL)) {
@@ -185,13 +184,13 @@ main (int argc, char *argv[])
   pipeline = gst_pipeline_new ("dstest1-pipeline");
 
   source = gst_element_factory_make ("rtspsrc", "rtsp-source");
-  depayer = gst_element_factory_make ("rtph264depay", "h264-depay");
+  depayer = gst_element_factory_make ("rtph264depay", "depay");
   tee = gst_element_factory_make ("tee", "tee");
-  decoder = gst_element_factory_make ("nvv4l2decoder ", "decoder");
+  decoder = gst_element_factory_make ("nvv4l2decoder", "decoder");
   videosink = gst_element_factory_make ("autovideosink", "sink");
 
   if (!source || !depayer || !decoder || !tee || !videosink) {
-    g_printerr ("One element could not be created22. Exiting.\n");
+    g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
   
@@ -226,11 +225,14 @@ main (int argc, char *argv[])
   /* we link the elements together */
   /* file-source -> h264-parser -> nvh264-decoder ->
    * nvinfer -> nvvidconv -> nvosd -> video-renderer */
+//  g_signal_connect (G_OBJECT (source), "pad-added",
+//      G_CALLBACK (cb_newpad), depayer);
+
   g_signal_connect (G_OBJECT (source), "pad-added",
       G_CALLBACK (cb_newpad), depayer);
 
-  if (!gst_element_link_many (source, depayer, tee, decoder, videosink, NULL)) {
-    g_printerr ("Elements could not be linked: 1. Exiting.\n");
+  if (!gst_element_link_many (depayer, tee, decoder, videosink, NULL)) {
+    g_printerr ("Elements could not be linked: 2. Exiting.\n");
     return -1;
   }
 
@@ -252,6 +254,7 @@ main (int argc, char *argv[])
    * the sink pad of the osd element, since by that time, the buffer would have
    * had got all the metadata. */
   /* Set the pipeline to "playing" state */
+
   if (nvdssrCtx) {
     g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
         nvdssrCtx);
@@ -262,7 +265,10 @@ main (int argc, char *argv[])
   /* Wait till pipeline encounters an error or EOS */
   g_print ("Running...\n");
   g_main_loop_run (loop);
-
+  if (pipeline && nvdssrCtx) {
+    if(NvDsSRDestroy (nvdssrCtx) != NVDSSR_STATUS_OK)
+    g_printerr ("Unable to destroy recording instance\n");
+  }
   /* Out of the main loop, clean up nicely */
   g_print ("Returned, stopping playback\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
