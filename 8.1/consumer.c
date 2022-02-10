@@ -83,25 +83,11 @@ int main(int argc, char const *const *argv) {
     }
   }
 
-  /*amqp_rpc_reply_t res;
-  amqp_envelope_t envelope;
-
-  amqp_maybe_release_buffers(conn);
-
-  res = amqp_consume_message(conn, &envelope, NULL, 0);
-
-  printf("Received message: %.*s\n",
-	  (int)envelope.message.body.len,
-          (char *)envelope.message.body.bytes);
-  printf("----\n");
-
-  amqp_destroy_envelope(&envelope);*/
-
-  amqp_bytes_free(queuename);
+/*  amqp_bytes_free(queuename);
 
   amqp_channel_close(conn, 1, AMQP_REPLY_SUCCESS);
   amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
-  amqp_destroy_connection(conn);
+  amqp_destroy_connection(conn);*/
 
   return 0;
 }
