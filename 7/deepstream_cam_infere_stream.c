@@ -6,20 +6,6 @@
 #include <cuda_runtime_api.h>
 #include <sys/timeb.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <byteswap.h>
-#include <pthread.h>
-#include <stdint.h>
-#include "thpool.h"
-
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
 
@@ -34,7 +20,6 @@
 
 #define HOST_ENET "10.0.111.11"
 #define HOST_PORT 31990
-#define HOST_PORT_UDP 8080
 
 #define MUXER_OUTPUT_WIDTH 1920
 #define MUXER_OUTPUT_HEIGHT 1080
@@ -57,81 +42,6 @@ gchar pgie_classes_str[4][32] = { "Vehicle", "TwoWheeler", "Person",
   "Roadsign"
 };
 
-struct Coords {
-    int sockfd;
-    int frame;
-    int top;
-    int left;
-    int width;
-    int height;
-    float conf;
-    struct sockaddr_in servaddr;
-};
-
-void send_bytes(struct Coords coord){
-    
-    int sockfd_ = coord.sockfd;
-    uint16_t frame_ = coord.frame;
-    uint16_t top_ = coord.top;
-    uint16_t left_ = coord.left;
-    uint16_t width_ = coord.width;
-    uint16_t height_ = coord.height;
-    float conf_ = coord.conf;
-
-    unsigned char msg[18];
-    
-    msg[0] = 0xAA;
-    msg[1] = 0xAA;
-
-    msg[2] = (frame_ >> 8) & 0xFF;
-    msg[3] = (frame_ >> 0) & 0xFF;
-
-    msg[4] = 0x00;
-    msg[5] = 0x01;
-
-    msg[6] = (top_ >> 8) & 0xFF;
-    msg[7] = (top_ >> 0) & 0xFF;
-
-    msg[8] = (left_ >> 8) & 0xFF;
-    msg[9] = (left_ >> 0) & 0xFF;
-
-    msg[10] = (width_ >> 8) & 0xFF;
-    msg[11] = (width_ >> 0) & 0xFF;
-
-    msg[12] = (height_ >> 8) & 0xFF;
-    msg[13] = (height_ >> 0) & 0xFF;
-
-    unsigned char conf__[sizeof (float)];
-    memcpy (conf__, &conf_, sizeof (conf_));
-
-    msg[14] = conf__[3];
-    msg[15] = conf__[2];
-    msg[16] = conf__[1];
-    msg[17] = conf__[0];
-
-    for (int i = 0; i < 18; i++)
-    { 
-     printf("%d: %02X ",i, msg[i]);
-    }
-       
-    int sockfd;
-    struct sockaddr_in     servaddr;
-    // Creating socket file descriptor
-    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-    memset(&servaddr, 0, sizeof(servaddr));
-      
-    sendto(coord.sockfd, 
-	  msg, 
-	  sizeof(msg),
-          MSG_CONFIRM, 
-          (const struct sockaddr *) &coord.servaddr,
-          sizeof(coord.servaddr));
-
-    //printf("msg sent.\n");
-}
 
 static void generate_ts_rfc3339 (char *buf, int buf_size)
 {
@@ -278,23 +188,6 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
         } else {
           g_print ("Error in attaching event meta to buffer\n");
         }
-
-	//threadpool thpool = thpool_init(1);
-	
-	/*coord.frame = frame_number;
-	coord.top = (int)msg_meta->bbox.top;
-	coord.left = (int)msg_meta->bbox.left;
-	coord.width = (int)msg_meta->bbox.width;
-	coord.height = (int)msg_meta->bbox.height;*/
-	
-	//thpool_add_work(thpool, (void*)send_bytes, &coord);
-    	//thpool_wait(thpool);
-    	//thpool_destroy(thpool);	
-	
-  	struct Coords *coord1 = u_data;
-	guint n = (*coord1).sockfd;
-        g_print("\n socket fd: %d \n", n);
-	send_bytes(*coord1);
 	g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",(int)msg_meta->bbox.top, (int)msg_meta->bbox.left, (int)msg_meta->bbox.width, (int)msg_meta->bbox.height);
       }
     }
@@ -526,30 +419,6 @@ main (int argc, char *argv[])
   gst_object_unref (sink_pad);
   gst_object_unref (tee_enet_pad);
 
-/////////
-  int sockfd;
-  struct sockaddr_in     servaddr;
-  if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-  }
-  memset(&servaddr, 0, sizeof(servaddr));       
-  servaddr.sin_family = AF_INET;
-  servaddr.sin_port = htons(HOST_PORT_UDP);
-  servaddr.sin_addr.s_addr = inet_addr(HOST_ENET);
-
-  struct Coords coord;
-  coord.sockfd = sockfd;
-  coord.servaddr.sin_family = servaddr.sin_family;
-  coord.servaddr.sin_port = servaddr.sin_port;
-  coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
-  g_print("\n COORDS: %d \n",coord.sockfd);
-  struct Coords * coord1 = &coord;
-  g_print("\n COORDS: %d \n",(*coord1).sockfd);
-
-/////////
-
-
 /************************************************************************/
 
 
@@ -578,11 +447,9 @@ main (int argc, char *argv[])
   else {
     if(msg2p_meta == 0) //generate payload using eventMsgMeta
         gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-            osd_sink_pad_buffer_probe, coord1, NULL);
+            osd_sink_pad_buffer_probe, NULL, NULL);
     }
   gst_object_unref (osd_sink_pad);
-
-
 
   /* Set the pipeline to "playing" state */
   g_print ("Now playing...\n");
