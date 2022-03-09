@@ -6,6 +6,20 @@
 #include <cuda_runtime_api.h>
 #include <sys/timeb.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <byteswap.h>
+#include <pthread.h>
+#include <stdint.h>
+#include "thpool.h"
+
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
 
@@ -15,23 +29,21 @@
 #define PGIE_CLASS_ID_VEHICLE 0
 #define PGIE_CLASS_ID_PERSON 2
 
-#define PGIE_CONFIG_FILE  "infer_config_light.txt"
-//#define PGIE_CONFIG_FILE "config_infer_primary.txt"
+#define PGIE_CONFIG_FILE  "infer_config.txt"
 #define MSCONV_CONFIG_FILE "dstest4_msgconv_config.txt"
 
+#define HOST_ENET "10.0.111.11"
+#define HOST_PORT 31990
+#define HOST_PORT_UDP 8080
 
-/* The muxer output resolution must be set if the input streams will be of
- * different resolution. The muxer will scale all the input frames to this
- * resolution. */
 #define MUXER_OUTPUT_WIDTH 1920
 #define MUXER_OUTPUT_HEIGHT 1080
 
 /* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
  * based on the fastest source's framerate. */
-#define MUXER_BATCH_TIMEOUT_USEC 40000
+#define MUXER_BATCH_TIMEOUT_USEC 33000
 
 static gchar *cfg_file = "cfg_amqp.txt";
-static gchar *input_file = "/opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.h264";
 static gchar *topic = NULL;
 static gchar *conn_str = NULL;
 static gchar *proto_lib = "libnvds_amqp_proto.so";
@@ -45,6 +57,81 @@ gchar pgie_classes_str[4][32] = { "Vehicle", "TwoWheeler", "Person",
   "Roadsign"
 };
 
+struct Coords {
+    int sockfd;
+    int frame;
+    int top;
+    int left;
+    int width;
+    int height;
+    float conf;
+    struct sockaddr_in servaddr;
+};
+
+void send_bytes(struct Coords coord){
+    
+    int sockfd_ = coord.sockfd;
+    uint16_t frame_ = coord.frame;
+    uint16_t top_ = coord.top;
+    uint16_t left_ = coord.left;
+    uint16_t width_ = coord.width;
+    uint16_t height_ = coord.height;
+    float conf_ = coord.conf;
+
+    unsigned char msg[18];
+    
+    msg[0] = 0xAA;
+    msg[1] = 0xAA;
+
+    msg[2] = (frame_ >> 8) & 0xFF;
+    msg[3] = (frame_ >> 0) & 0xFF;
+
+    msg[4] = 0x00;
+    msg[5] = 0x01;
+
+    msg[6] = (top_ >> 8) & 0xFF;
+    msg[7] = (top_ >> 0) & 0xFF;
+
+    msg[8] = (left_ >> 8) & 0xFF;
+    msg[9] = (left_ >> 0) & 0xFF;
+
+    msg[10] = (width_ >> 8) & 0xFF;
+    msg[11] = (width_ >> 0) & 0xFF;
+
+    msg[12] = (height_ >> 8) & 0xFF;
+    msg[13] = (height_ >> 0) & 0xFF;
+
+    unsigned char conf__[sizeof (float)];
+    memcpy (conf__, &conf_, sizeof (conf_));
+
+    msg[14] = conf__[3];
+    msg[15] = conf__[2];
+    msg[16] = conf__[1];
+    msg[17] = conf__[0];
+
+    for (int i = 0; i < 18; i++)
+    { 
+     printf("%d: %02X ",i, msg[i]);
+    }
+       
+    int sockfd;
+    struct sockaddr_in     servaddr;
+    // Creating socket file descriptor
+    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    memset(&servaddr, 0, sizeof(servaddr));
+      
+    sendto(coord.sockfd, 
+	  msg, 
+	  sizeof(msg),
+          MSG_CONFIRM, 
+          (const struct sockaddr *) &coord.servaddr,
+          sizeof(coord.servaddr));
+
+    //printf("msg sent.\n");
+}
 
 static void generate_ts_rfc3339 (char *buf, int buf_size)
 {
@@ -62,70 +149,6 @@ static void generate_ts_rfc3339 (char *buf, int buf_size)
   strncat(buf, strmsec, buf_size);
 }
 
-static gpointer meta_copy_func (gpointer data, gpointer user_data)
-{
-  NvDsUserMeta *user_meta = (NvDsUserMeta *) data;
-  NvDsEventMsgMeta *srcMeta = (NvDsEventMsgMeta *) user_meta->user_meta_data;
-  NvDsEventMsgMeta *dstMeta = NULL;
-
-  dstMeta = g_memdup (srcMeta, sizeof(NvDsEventMsgMeta));
-
-  if (srcMeta->ts)
-    dstMeta->ts = g_strdup (srcMeta->ts);
-
-  if (srcMeta->sensorStr)
-    dstMeta->sensorStr = g_strdup (srcMeta->sensorStr);
-
-  if (srcMeta->objSignature.size > 0) {
-    dstMeta->objSignature.signature = g_memdup (srcMeta->objSignature.signature,
-                                                srcMeta->objSignature.size);
-    dstMeta->objSignature.size = srcMeta->objSignature.size;
-  }
-
-  if(srcMeta->objectId) {
-    dstMeta->objectId = g_strdup (srcMeta->objectId);
-  }
-
-  if (srcMeta->extMsgSize > 0) {
-    if (srcMeta->objType == NVDS_OBJECT_TYPE_VEHICLE) {
-      NvDsVehicleObject *srcObj = (NvDsVehicleObject *) srcMeta->extMsg;
-      NvDsVehicleObject *obj = (NvDsVehicleObject *) g_malloc0 (sizeof (NvDsVehicleObject));
-      if (srcObj->type)
-        obj->type = g_strdup (srcObj->type);
-      if (srcObj->make)
-        obj->make = g_strdup (srcObj->make);
-      if (srcObj->model)
-        obj->model = g_strdup (srcObj->model);
-      if (srcObj->color)
-        obj->color = g_strdup (srcObj->color);
-      if (srcObj->license)
-        obj->license = g_strdup (srcObj->license);
-      if (srcObj->region)
-        obj->region = g_strdup (srcObj->region);
-
-      dstMeta->extMsg = obj;
-      dstMeta->extMsgSize = sizeof (NvDsVehicleObject);
-    } else if (srcMeta->objType == NVDS_OBJECT_TYPE_PERSON) {
-      NvDsPersonObject *srcObj = (NvDsPersonObject *) srcMeta->extMsg;
-      NvDsPersonObject *obj = (NvDsPersonObject *) g_malloc0 (sizeof (NvDsPersonObject));
-
-      obj->age = srcObj->age;
-
-      if (srcObj->gender)
-        obj->gender = g_strdup (srcObj->gender);
-      if (srcObj->cap)
-        obj->cap = g_strdup (srcObj->cap);
-      if (srcObj->hair)
-        obj->hair = g_strdup (srcObj->hair);
-      if (srcObj->apparel)
-        obj->apparel = g_strdup (srcObj->apparel);
-      dstMeta->extMsg = obj;
-      dstMeta->extMsgSize = sizeof (NvDsPersonObject);
-    }
-  }
-
-  return dstMeta;
-}
 
 static void meta_free_func (gpointer data, gpointer user_data)
 {
@@ -178,75 +201,6 @@ static void meta_free_func (gpointer data, gpointer user_data)
   user_meta->user_meta_data = NULL;
 }
 
-static void
-generate_vehicle_meta (gpointer data)
-{
-  NvDsVehicleObject *obj = (NvDsVehicleObject *) data;
-
-  obj->type = g_strdup ("sedan");
-  obj->color = g_strdup ("blue");
-  obj->make = g_strdup ("Bugatti");
-  obj->model = g_strdup ("M");
-  obj->license = g_strdup ("XX1234");
-  obj->region = g_strdup ("CA");
-}
-
-static void
-generate_person_meta (gpointer data)
-{
-  NvDsPersonObject *obj = (NvDsPersonObject *) data;
-  obj->age = 45;
-  obj->cap = g_strdup ("none");
-  obj->hair = g_strdup ("black");
-  obj->gender = g_strdup ("male");
-  obj->apparel= g_strdup ("formal");
-}
-
-static void
-generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_params)
-{
-  NvDsEventMsgMeta *meta = (NvDsEventMsgMeta *) data;
-  meta->sensorId = 0;
-  meta->placeId = 0;
-  meta->moduleId = 0;
-  meta->sensorStr = g_strdup ("sensor-0");
-
-  meta->ts = (gchar *) g_malloc0 (MAX_TIME_STAMP_LEN + 1);
-  meta->objectId = (gchar *) g_malloc0 (MAX_LABEL_SIZE);
-
-  strncpy(meta->objectId, obj_params->obj_label, MAX_LABEL_SIZE);
-
-  generate_ts_rfc3339(meta->ts, MAX_TIME_STAMP_LEN);
-
-  /*
-   * This demonstrates how to attach custom objects.
-   * Any custom object as per requirement can be generated and attached
-   * like NvDsVehicleObject / NvDsPersonObject. Then that object should
-   * be handled in payload generator library (nvmsgconv.cpp) accordingly.
-   */
-  if (class_id == PGIE_CLASS_ID_VEHICLE) {
-    meta->type = NVDS_EVENT_MOVING;
-    meta->objType = NVDS_OBJECT_TYPE_VEHICLE;
-    meta->objClassId = PGIE_CLASS_ID_VEHICLE;
-
-    NvDsVehicleObject *obj = (NvDsVehicleObject *) g_malloc0 (sizeof (NvDsVehicleObject));
-    generate_vehicle_meta (obj);
-
-    meta->extMsg = obj;
-    meta->extMsgSize = sizeof (NvDsVehicleObject);
-  } else if (class_id == PGIE_CLASS_ID_PERSON) {
-    meta->type = NVDS_EVENT_ENTRY;
-    meta->objType = NVDS_OBJECT_TYPE_PERSON;
-    meta->objClassId = PGIE_CLASS_ID_PERSON;
-
-    NvDsPersonObject *obj = (NvDsPersonObject *) g_malloc0 (sizeof (NvDsPersonObject));
-    generate_person_meta (obj);
-
-    meta->extMsg = obj;
-    meta->extMsgSize = sizeof (NvDsPersonObject);
-  }
-}
-
 
 /* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
  * and update params for drawing rectangle, object information etc. */
@@ -258,8 +212,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
   GstBuffer *buf = (GstBuffer *) info->data;
   NvDsFrameMeta *frame_meta = NULL;
   NvOSD_TextParams *txt_params = NULL;
-  guint vehicle_count = 0;
-  guint person_count = 0;
+  guint object_count = 0;
   gboolean is_first_object = TRUE;
   NvDsMetaList *l_frame, *l_obj;
 
@@ -277,7 +230,6 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
       continue;
     }
 
-    is_first_object = TRUE;
 
     for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
       NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
@@ -297,35 +249,14 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                   pgie_classes_str[obj_meta->class_id]);
 
       if (obj_meta->class_id == PGIE_CLASS_ID_VEHICLE)
-        vehicle_count++;
-      if (obj_meta->class_id == PGIE_CLASS_ID_PERSON)
-        person_count++;
-
-      /* Now set the offsets where the string should appear */
-      txt_params->x_offset = obj_meta->rect_params.left;
-      txt_params->y_offset = obj_meta->rect_params.top - 25;
-
-      /* Font , font-color and font-size */
-      txt_params->font_params.font_name = "Serif";
-      txt_params->font_params.font_size = 10;
-      txt_params->font_params.font_color.red = 1.0;
-      txt_params->font_params.font_color.green = 1.0;
-      txt_params->font_params.font_color.blue = 1.0;
-      txt_params->font_params.font_color.alpha = 1.0;
-
-      /* Text background color */
-      txt_params->set_bg_clr = 1;
-      txt_params->text_bg_clr.red = 0.0;
-      txt_params->text_bg_clr.green = 0.0;
-      txt_params->text_bg_clr.blue = 0.0;
-      txt_params->text_bg_clr.alpha = 1.0;
+        object_count++;
 
       /*
        * Ideally NVDS_EVENT_MSG_META should be attached to buffer by the
        * component implementing detection / recognition logic.
        * Here it demonstrates how to use / attach that meta data.
        */
-      if (is_first_object && !(frame_number % frame_interval)) {
+      if (!(frame_number % frame_interval)) {
         /* Frequency of messages to be send will be based on use case.
          * Here message is being sent for first object every frame_interval(default=30).
          */
@@ -338,25 +269,39 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
         msg_meta->frameId = frame_number;
         msg_meta->trackingId = obj_meta->object_id;
         msg_meta->confidence = obj_meta->confidence;
-        generate_event_msg_meta (msg_meta, obj_meta->class_id, obj_meta);
 
         NvDsUserMeta *user_event_meta = nvds_acquire_user_meta_from_pool (batch_meta);
         if (user_event_meta) {
           user_event_meta->user_meta_data = (void *) msg_meta;
           user_event_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
-          user_event_meta->base_meta.copy_func = (NvDsMetaCopyFunc) meta_copy_func;
-          user_event_meta->base_meta.release_func = (NvDsMetaReleaseFunc) meta_free_func;
           nvds_add_user_meta_to_frame(frame_meta, user_event_meta);
         } else {
           g_print ("Error in attaching event meta to buffer\n");
         }
-        is_first_object = FALSE;
+
+	//threadpool thpool = thpool_init(1);
+	
+	/*coord.frame = frame_number;
+	coord.top = (int)msg_meta->bbox.top;
+	coord.left = (int)msg_meta->bbox.left;
+	coord.width = (int)msg_meta->bbox.width;
+	coord.height = (int)msg_meta->bbox.height;*/
+	
+	//thpool_add_work(thpool, (void*)send_bytes, &coord);
+    	//thpool_wait(thpool);
+    	//thpool_destroy(thpool);	
+	
+  	struct Coords *coord1 = u_data;
+	guint n = (*coord1).sockfd;
+        g_print("\n socket fd: %d \n", n);
+	send_bytes(*coord1);
+	g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",(int)msg_meta->bbox.top, (int)msg_meta->bbox.left, (int)msg_meta->bbox.width, (int)msg_meta->bbox.height);
       }
     }
   }
   g_print ("Frame Number = %d "
-      "Vehicle Count = %d Person Count = %d\n",
-      frame_number, vehicle_count, person_count);
+      "Object Count = %d\n",
+      frame_number, object_count);
   frame_number++;
 
   return GST_PAD_PROBE_OK;
@@ -430,7 +375,7 @@ main (int argc, char *argv[])
   }
   g_option_context_free (ctx);
 
-  if (!proto_lib || !input_file) {
+  if (!proto_lib) {
     g_printerr("missing protocol library or input video file\n");
     g_printerr ("Usage: add data to this *.c file");
     return -1;
@@ -497,8 +442,8 @@ main (int argc, char *argv[])
 
   g_object_set (payer, "config-interval", -1, NULL); //not surepayer
 
-  g_object_set (enetsink, "host", "10.0.111.10", NULL);
-  g_object_set (enetsink, "port", 31990, NULL);
+  g_object_set (enetsink, "host", HOST_ENET, NULL);
+  g_object_set (enetsink, "port", HOST_PORT, NULL);
   g_object_set (enetsink, "sync", FALSE, NULL);
 
   g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
@@ -581,6 +526,30 @@ main (int argc, char *argv[])
   gst_object_unref (sink_pad);
   gst_object_unref (tee_enet_pad);
 
+/////////
+  int sockfd;
+  struct sockaddr_in     servaddr;
+  if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+  }
+  memset(&servaddr, 0, sizeof(servaddr));       
+  servaddr.sin_family = AF_INET;
+  servaddr.sin_port = htons(HOST_PORT_UDP);
+  servaddr.sin_addr.s_addr = inet_addr(HOST_ENET);
+
+  struct Coords coord;
+  coord.sockfd = sockfd;
+  coord.servaddr.sin_family = servaddr.sin_family;
+  coord.servaddr.sin_port = servaddr.sin_port;
+  coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
+  g_print("\n COORDS: %d \n",coord.sockfd);
+  struct Coords * coord1 = &coord;
+  g_print("\n COORDS: %d \n",(*coord1).sockfd);
+
+/////////
+
+
 /************************************************************************/
 
 
@@ -609,12 +578,14 @@ main (int argc, char *argv[])
   else {
     if(msg2p_meta == 0) //generate payload using eventMsgMeta
         gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-            osd_sink_pad_buffer_probe, NULL, NULL);
+            osd_sink_pad_buffer_probe, coord1, NULL);
     }
   gst_object_unref (osd_sink_pad);
 
+
+
   /* Set the pipeline to "playing" state */
-  g_print ("Now playing: %s\n", input_file);
+  g_print ("Now playing...\n");
   gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
   /* Wait till pipeline encounters an error or EOS */
@@ -625,7 +596,6 @@ main (int argc, char *argv[])
   g_print ("Returned, stopping playback\n");
 
   g_free (cfg_file);
-  g_free (input_file);
   g_free (topic);
   g_free (conn_str);
   g_free (proto_lib);
