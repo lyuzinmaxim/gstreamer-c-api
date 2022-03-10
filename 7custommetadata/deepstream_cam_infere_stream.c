@@ -33,7 +33,7 @@
 #define MUXER_OUTPUT_HEIGHT 1080
 
 
-#define HOST_ENET "10.0.111.11"
+#define HOST_ENET "10.0.111.10"
 #define HOST_PORT 31990
 #define HOST_PORT_UDP 52000
 
@@ -88,11 +88,11 @@ void send_bytes(struct Coords coord){
     msg[4] = 0x00;
     msg[5] = 0x01;
 
-    msg[6] = (top_ >> 8) & 0xFF;
-    msg[7] = (top_ >> 0) & 0xFF;
+    msg[8] = (top_ >> 8) & 0xFF;
+    msg[9] = (top_ >> 0) & 0xFF;
 
-    msg[8] = (left_ >> 8) & 0xFF;
-    msg[9] = (left_ >> 0) & 0xFF;
+    msg[6] = (left_ >> 8) & 0xFF;
+    msg[7] = (left_ >> 0) & 0xFF;
 
     msg[10] = (width_ >> 8) & 0xFF;
     msg[11] = (width_ >> 0) & 0xFF;
@@ -287,7 +287,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 	coord1->left = (int)msg_meta->bbox.left;
 	coord1->width = (int)msg_meta->bbox.width;
 	coord1->height = (int)msg_meta->bbox.height;
-	//g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",coord1->top, coord1->left, coord1->width, coord1->height);
+	g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",coord1->top, coord1->left, coord1->width, coord1->height);
 	//guint n = (*coord1).sockfd;
         //g_print("\n socket fd: %d \n", n);
 	send_bytes(*coord1);
