@@ -1,0 +1,20 @@
+###############################################################################
+# Copyright (c) 2019-2020 NVIDIA CORPORATION.  All Rights Reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+###############################################################################
+
+[message-broker]
+#hostname = 10.0.111.10
+hostname = 10.0.111.11
+port = 5672
+username = jetson
+password = 1111
+queue = modem_queue
+exchange = modem_exchange
+topic = modem
+#share-connection = 1
