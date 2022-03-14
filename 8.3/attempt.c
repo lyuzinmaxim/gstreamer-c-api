@@ -274,7 +274,7 @@ main (int argc, char *argv[])
     return -1;
   }
 
-  if (!gst_element_link_many (decoder, videosink, tee, NULL)) {
+  if (!gst_element_link_many (decoder, videosink, NULL)) {
     g_printerr ("Elements could not be linked: 2. Exiting.\n");
     return -1;
   }
