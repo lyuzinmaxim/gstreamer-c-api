@@ -167,14 +167,14 @@ static void cb_new_rtspsrc_pad(GstElement *element,GstPad*pad,gpointer  data)
     GstElement *p_rtph264depay;
 
     name = gst_pad_get_name(pad);
-    g_print("A new pad %s was created\n", name);
+    //g_print("A new pad %s was created\n", name);
 
     // here, you would setup a new pad link for the newly created pad
     // sooo, now find that rtph264depay is needed and link them?
     p_caps = gst_pad_get_pad_template_caps (pad);
 
     description = gst_caps_to_string(p_caps);
-    printf("%s\n",p_caps,", ",description,"\n");
+    //printf("%s\n",p_caps,", ",description,"\n");
     g_free(description);
 
     p_rtph264depay = GST_ELEMENT(data);
@@ -194,7 +194,7 @@ int
 main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
-  GstElement *source, *depayer, *decoder;
+  GstElement *source, *depayer, *decoder, *parser, *queue_show, *queue_save;
   GstElement *videosink;
   GstCaps *filtercaps;
   GstBus *bus = NULL;
@@ -202,8 +202,7 @@ main (int argc, char *argv[])
   GstPad *osd_sink_pad = NULL;
   GstPad *sinkpad, *srcpad;
   GstPad *tee_enet_pad, *queue_enet_pad;
-  GstPad *sinkpad_src, *srcpad_src;
-  
+  GstPad *tee_local_pad, *queue_local_pad;
   NvDsSRInitParams params = { 0 };
 
   int current_device = -1;
@@ -226,11 +225,18 @@ main (int argc, char *argv[])
 
   source = gst_element_factory_make ("rtspsrc", "rtsp-source");
   depayer = gst_element_factory_make ("rtph264depay", "depay");
+  parser = gst_element_factory_make ("h264parse", "parser");
+
   tee = gst_element_factory_make ("tee", "tee");
+
+
+  queue_show = gst_element_factory_make ("queue","queue_show");
+  queue_save = gst_element_factory_make ("queue","queue_save");
+
   decoder = gst_element_factory_make ("nvv4l2decoder", "decoder");
   videosink = gst_element_factory_make ("autovideosink", "sink");
 
-  if (!source || !depayer || !decoder || !tee || !videosink) {
+  if (!source || !depayer || !decoder || !tee || !parser || !videosink || !queue_show || !queue_save ) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
@@ -238,40 +244,53 @@ main (int argc, char *argv[])
 
 /* Set elements properties */
   g_object_set (source, "location", "rtsp://127.0.0.1:8554/test", NULL);
-
-  /*filtercaps = gst_caps_new_simple ("video/x-raw(memory:NVMM)",
-	  "format",G_TYPE_STRING,"I420",
-          "width", G_TYPE_INT, 20,
-          "height", G_TYPE_INT, 108,
-          "framerate",GST_TYPE_FRACTION,30,1,smart_record_event_generator
- 	  NULL);
-  g_object_set (filter, "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);*/
-
   g_object_set (videosink, "sync", 0, NULL);
+
   /* we add a message handler */
+  gst_bin_add_many (GST_BIN (pipeline),
+      source, depayer, decoder, tee, parser, videosink, queue_show, queue_save, NULL);
+
+  if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
+    g_printerr ("Failed to create smart record bin");
+    return -1;
+  }
+  gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
 
   /////
- /* sinkpad_src = gst_element_get_static_pad (source,"stream_%u");
-  if (!sinkpad_src) {
+  tee_local_pad = gst_element_get_request_pad (tee,"src_%u");
+  if (!tee_local_pad) {
     g_printerr ("Tee local pad request failed. Exiting.\n");
     return -1;
   }
-  srcpad_src = gst_element_get_static_pad (depayer,"sink");
-  if (!srcpad_src) {
+  queue_local_pad = gst_element_get_static_pad (queue_show,"sink");
+  if (!queue_local_pad) {
     g_printerr ("Queue local pad request failed. Exiting.\n");
     return -1;
   }
 
-  if (gst_pad_link (sinkpad_src, srcpad_src) != GST_PAD_LINK_OK){
+  tee_enet_pad = gst_element_get_request_pad (tee,"src_%u");
+  if (!tee_enet_pad) {
+    g_printerr ("Tee enet pad request failed. Exiting.\n");
+    return -1;
+  }
+
+  queue_enet_pad = gst_element_get_static_pad (queue_save,"sink");
+  if (!queue_enet_pad) {
+    g_printerr ("Tee enet pad request failed. Exiting.\n");
+    return -1;
+  }
+
+  if (gst_pad_link (tee_local_pad, queue_local_pad) != GST_PAD_LINK_OK ||
+      gst_pad_link (tee_enet_pad, queue_enet_pad) != GST_PAD_LINK_OK){
    
     g_printerr ("Tee goes wrong\n");
     gst_object_unref (pipeline);
     return -1;
   }
 
-  gst_object_unref (sinkpad_src);
-  gst_object_unref (srcpad_src);*/
+  gst_object_unref (queue_local_pad);
+  gst_object_unref (queue_enet_pad);
+
   /////
 
 
@@ -282,37 +301,37 @@ main (int argc, char *argv[])
   /* Set up the pipeline */
   /* we add all elements into the pipeline */
   
-  gst_bin_add_many (GST_BIN (pipeline),
-        source, depayer, decoder, tee, videosink, NULL);
   
 
-  /* Link elements */
-  /* we link the elements together */
-  /* file-source -> h264-parser -> nvh264-decoder ->
-   * nvinfer -> nvvidconv -> nvosd -> video-renderer */
-//  g_signal_connect (G_OBJECT (source), "pad-added",
-//      G_CALLBACK (cb_newpad), depayer);
-
-  /*g_signal_connect (G_OBJECT (source), "pad-added",
-      G_CALLBACK (cb_newpad), depayer);*/
   g_signal_connect(source, "pad-added", G_CALLBACK(cb_new_rtspsrc_pad),depayer);
-  if (!gst_element_link_many (depayer, decoder, videosink, NULL)) {
-    g_printerr ("Elements could not be linked: 2. Exiting.\n");
+  
+  if (!gst_element_link_many (depayer, tee, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
+  if (!gst_element_link_many (queue_show, decoder, videosink, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
+    return -1;
+  }
+  if (!gst_element_link_many (queue_save, parser, nvdssrCtx->recordbin, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
+    return -1;
+  }
+  /*if (!gst_element_link_many (depayer, tee, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
+    return -1;
+  }*/
 
+  /*if (!gst_element_link_many (decoder, videosink, NULL)) {
+    g_printerr ("Elements could not be linked: 2. Exiting.\n");
+    return -1;
+  }*/
   params.containerType = SMART_REC_CONTAINER;
   params.cacheSize = CACHE_SIZE_SEC;
   params.defaultDuration = SMART_REC_DEFAULT_DURATION;
   params.callback = smart_record_callback;
   params.fileNamePrefix = "testing";
  
-  if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
-    g_printerr ("Failed to create smart record bin");
-    return -1;
-  }
-
-  gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
 
   
   /* Lets add probe to get informed of the meta data generated, we add probe to
@@ -325,8 +344,8 @@ main (int argc, char *argv[])
         nvdssrCtx);
   }*/
 
-  /*g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
-        nvdssrCtx);*/
+  g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
+        nvdssrCtx);
   
   /*char mode[20];
   scanf("%s",mode);
