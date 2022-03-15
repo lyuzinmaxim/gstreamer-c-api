@@ -1,4 +1,6 @@
-Working version is in "root"
+Working version is in "root" without video output, works great
+
+Cache starts working only since "I" (Intracoded) frame was coming
 
 
 build
