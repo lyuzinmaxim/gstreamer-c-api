@@ -8,11 +8,11 @@
 #define MAX_DISPLAY_LEN 64
 
 #define SMART_REC_CONTAINER 0
-#define CACHE_SIZE_SEC 15
+#define CACHE_SIZE_SEC 1
 #define SMART_REC_DEFAULT_DURATION 100
-#define START_TIME 2
+#define START_TIME 1
 #define SMART_REC_DURATION 100
-#define SMART_REC_INTERVAL 3
+#define SMART_REC_INTERVAL 0.5
 
 #define PGIE_CLASS_ID_VEHICLE 0
 #define PGIE_CLASS_ID_PERSON 2
@@ -25,7 +25,7 @@
 
 /* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
  * based on the fastest source's framerate. */
-#define MUXER_BATCH_TIMEOUT_USEC 40000
+#define MUXER_BATCH_TIMEOUT_USEC 33000
 
 gint frame_number = 0;
 gchar pgie_classes_str[4][32] = { "Vehicle", "TwoWheeler", "Person",
@@ -159,12 +159,11 @@ cb_newpad (GstElement * element, GstPad * element_src_pad, gpointer data)
   gst_caps_unref (caps);
 }
 
-
 int
 main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
-  GstElement *source, *depayer, *decoder, *parser;
+  GstElement *source, *filter, *depayer, *decoder, *parser, *parser2, *queue_show, *queue_save;
   GstElement *videosink;
   GstCaps *filtercaps;
   GstBus *bus = NULL;
@@ -172,74 +171,72 @@ main (int argc, char *argv[])
   GstPad *osd_sink_pad = NULL;
   GstPad *sinkpad, *srcpad;
   GstPad *tee_enet_pad, *queue_enet_pad;
-  GstPad *tee_local_pad, *tee_enet_pad;
-  GstPad *queue_local_pad, *queue_enet_pad;
-  
+  GstPad *tee_local_pad, *queue_local_pad;
   NvDsSRInitParams params = { 0 };
+
+  params.containerType = SMART_REC_CONTAINER;
+  params.cacheSize = CACHE_SIZE_SEC;
+  params.defaultDuration = SMART_REC_DEFAULT_DURATION;
+  params.callback = smart_record_callback;
+  params.fileNamePrefix = "testing";
 
   int current_device = -1;
   cudaGetDevice(&current_device);
   struct cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, current_device);
-  /* Check input arguments */
-  /*if (argc != 2) {
-    g_printerr ("Usage: %s <H264 filename>\n", argv[0]);
-    return -1;
-  }*/
 
-  /* Standard GStreamer initialization */
   gst_init (&argc, &argv);
   loop = g_main_loop_new (NULL, FALSE);
 
-  /* Create gstreamer elements */
-  /* Create Pipeline element that will form a connection of other elements */
+
   pipeline = gst_pipeline_new ("dstest1-pipeline");
 
-  source = gst_element_factory_make ("rtspsrc", "rtsp-source");
+  source = gst_element_factory_make ("udpsrc", "udp-source");
+  filter = gst_element_factory_make ("capsfilter","filter");
   depayer = gst_element_factory_make ("rtph264depay", "depay");
-  tee = gst_element_factory_make ("tee", "tee");
   parser = gst_element_factory_make ("h264parse", "parser");
-
+  parser2 = gst_element_factory_make ("h264parse", "parser2");
+  tee = gst_element_factory_make ("tee", "tee");
+  queue_show = gst_element_factory_make ("queue","queue_show");
+  queue_save = gst_element_factory_make ("queue","queue_save");
   decoder = gst_element_factory_make ("nvv4l2decoder", "decoder");
   videosink = gst_element_factory_make ("autovideosink", "sink");
-
   if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
     g_printerr ("Failed to create smart record bin");
     return -1;
   }
 
-  gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
-  
-  if (!source || !depayer || !decoder || !tee  || !parser || !videosink) {
+  if (!source || !filter || !depayer || !decoder || !tee || !parser || !parser2 || !videosink || !queue_show || !queue_save ) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
-  
 
-/* Set elements properties */
-  g_object_set (source, "location", "rtsp://127.0.0.1:8554/test", NULL);
+  filtercaps = gst_caps_new_simple ("application/x-rtp",
+	  "media",G_TYPE_STRING,"video",
+          "clock-rate", G_TYPE_INT, 90000,
+          "encoding-name", G_TYPE_STRING, "H264",
+          "payload",G_TYPE_INT,96,NULL);
+  g_object_set (filter, "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
 
-
+  /* Set elements properties */
+  g_object_set (source, "port", 5000, NULL);
+  g_object_set (parser, "config-interval", -1, NULL);
+  g_object_set (parser2, "config-interval", -1, NULL);
   g_object_set (videosink, "sync", 0, NULL);
-  /* we add a message handler */
-  bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
-  bus_watch_id = gst_bus_add_watch (bus, bus_call, loop);
-  gst_object_unref (bus);
 
-  /* Set up the pipeline */
-  /* we add all elements into the pipeline */
-  
+  /* Adding to bin */
   gst_bin_add_many (GST_BIN (pipeline),
-        source, depayer, decoder, tee, parser, videosink, NULL);
-  
-  
-//////
+      source, filter, depayer, decoder, tee, parser, parser2 , videosink, queue_show, queue_save, NULL);
+  gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
+
+  /* Tee turning on */
   tee_local_pad = gst_element_get_request_pad (tee,"src_%u");
   if (!tee_local_pad) {
     g_printerr ("Tee local pad request failed. Exiting.\n");
     return -1;
   }
-  queue_local_pad = gst_element_get_static_pad (decoder,"sink");
+  queue_local_pad = gst_element_get_static_pad (queue_show,"sink");
   if (!queue_local_pad) {
     g_printerr ("Queue local pad request failed. Exiting.\n");
     return -1;
@@ -251,7 +248,7 @@ main (int argc, char *argv[])
     return -1;
   }
 
-  queue_enet_pad = gst_element_get_static_pad (parser,"sink");
+  queue_enet_pad = gst_element_get_static_pad (queue_save,"sink");
   if (!queue_enet_pad) {
     g_printerr ("Tee enet pad request failed. Exiting.\n");
     return -1;
@@ -267,54 +264,41 @@ main (int argc, char *argv[])
 
   gst_object_unref (queue_local_pad);
   gst_object_unref (queue_enet_pad);
-///
 
-  if (!gst_element_link_many (source, depayer, tee, NULL)) {
+  /* Bus and linking */
+
+  bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
+  bus_watch_id = gst_bus_add_watch (bus, bus_call, loop);
+  gst_object_unref (bus);
+
+  /* Link all elements together:
+				          ->queue_show -> parser -> decoder-> videosink
+	  src -> filter -> depayer -> tee | 
+				          ->queue_save -> parser2 ->SmartRecordBin
+  */ 
+
+  if (!gst_element_link_many (source, filter, depayer, tee, NULL)) {
     g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
 
-  if (!gst_element_link_many (decoder, videosink, NULL)) {
-    g_printerr ("Elements could not be linked: 2. Exiting.\n");
+  if (!gst_element_link_many (queue_show, parser, decoder, videosink, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
-  
-  if (!gst_element_link_many (parser, nvdssrCtx->recordbin, NULL)) {
-    g_printerr ("Elements could not be linked: 2. Exiting.\n");
+  if (!gst_element_link_many (queue_save, parser2, nvdssrCtx->recordbin, NULL)) {
+    g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
-  
-  params.containerType = SMART_REC_CONTAINER;
-  params.cacheSize = CACHE_SIZE_SEC;
-  params.defaultDuration = SMART_REC_DEFAULT_DURATION;
-  params.callback = smart_record_callback;
-  params.fileNamePrefix = "testing";
- 
-  
 
+  //gst_element_sync_state_with_parent(parser2);
   
-  /* Lets add probe to get informed of the meta data generated, we add probe to
-   * the sink pad of the osd element, since by that time, the buffer would have
-   * had got all the metadata. */
-  /* Set the pipeline to "playing" state */
-  
-  /*if (nvdssrCtx) {
+  if (nvdssrCtx) {
     g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
         nvdssrCtx);
-  }*/
+  }
 
-  g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
-        nvdssrCtx);
-  
-  /*char mode[20];
-  scanf("%s",mode);
-  printf("Mode is: %s",mode);*/
-  
-  /*if (true) {
-    smart_record_event_generator(nvdssrCtx);
-  };*/
-
-  g_print ("Now playing: %s\n", argv[1]);
+  g_print ("Now playing video. \n");
   gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
   /* Wait till pipeline encounters an error or EOS */
