@@ -179,6 +179,7 @@ main (int argc, char *argv[])
   params.defaultDuration = SMART_REC_DEFAULT_DURATION;
   params.callback = smart_record_callback;
   params.fileNamePrefix = "testing";
+  params.dirpath = "/home/maxim/Videos";
 
   int current_device = -1;
   cudaGetDevice(&current_device);
