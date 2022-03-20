@@ -198,109 +198,63 @@ static GstPadProbeReturn
 osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     gpointer u_data)
 {
-  GstBuffer *buf = (GstBuffer *) info->data;
-  NvDsFrameMeta *frame_meta = NULL;
-  NvOSD_TextParams *txt_params = NULL;
-  guint object_count = 0;
-  gboolean is_first_object = TRUE;
-  NvDsMetaList *l_frame, *l_obj;
+    GstBuffer *buf = (GstBuffer *) info->data;
+    NvDsFrameMeta *frame_meta = NULL;
+    NvOSD_TextParams *txt_params = NULL;
+    guint object_count = 0;
+    gboolean is_first_object = TRUE;
+    NvDsMetaList *l_frame, *l_obj;
 
-  NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
-  if (!batch_meta) {
+    NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+    if (!batch_meta) {
     // No batch meta attached.
     return GST_PAD_PROBE_OK;
-  }
-
-  for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
-    frame_meta = (NvDsFrameMeta *) l_frame->data;
-
-    if (frame_meta == NULL) {
-      // Ignore Null frame meta.
-      continue;
     }
 
+    for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
+		frame_meta = (NvDsFrameMeta *) l_frame->data;
 
-    for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
-      NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
+		if (frame_meta == NULL) {
+		  // Ignore Null frame meta.
+		  continue;
+		}
 
-      if (obj_meta == NULL) {
-        // Ignore Null object.
-        continue;
-      }
+		for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
+			
+			NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
 
-      txt_params = &(obj_meta->text_params);
-      if (txt_params->display_text)
-        g_free (txt_params->display_text);
+			if (obj_meta == NULL) {
+			// Ignore Null object.
+			continue;
+			}
 
-      txt_params->display_text = g_malloc0 (MAX_DISPLAY_LEN);
+			if (obj_meta->class_id == PGIE_CLASS_ID_VEHICLE)
+				object_count++;
 
-      g_snprintf (txt_params->display_text, MAX_DISPLAY_LEN, "%s ",
-                  pgie_classes_str[obj_meta->class_id]);
+				if (!(frame_number % frame_interval)) {
 
-      if (obj_meta->class_id == PGIE_CLASS_ID_VEHICLE)
-        object_count++;
+				struct Coords *coord1 = u_data;
+				
+				coord1->frame = frame_number;
+				coord1->top = (int)obj_meta->rect_params.top;
+				coord1->left = (int)obj_meta->rect_params.left;
+				coord1->width = (int)obj_meta->rect_params.width;
+				coord1->height = (int)obj_meta->rect_params.height;
+				g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",
+					coord1->top, 
+					coord1->left, 
+					coord1->width, 
+					coord1->height);
 
-      /*
-       * Ideally NVDS_EVENT_MSG_META should be attached to buffer by the
-       * component implementing detection / recognition logic.
-       * Here it demonstrates how to use / attach that meta data.
-       */
-      if (!(frame_number % frame_interval)) {
-        /* Frequency of messages to be send will be based on use case.
-         * Here message is being sent for first object every frame_interval(default=30).
-         */
-
-        NvDsEventMsgMeta *msg_meta = (NvDsEventMsgMeta *) g_malloc0 (sizeof (NvDsEventMsgMeta));
-        msg_meta->bbox.top = obj_meta->rect_params.top;
-        msg_meta->bbox.left = obj_meta->rect_params.left;
-        msg_meta->bbox.width = obj_meta->rect_params.width;
-        msg_meta->bbox.height = obj_meta->rect_params.height;
-        msg_meta->frameId = frame_number;
-        msg_meta->trackingId = obj_meta->object_id;
-        msg_meta->confidence = obj_meta->confidence;
-
-        NvDsUserMeta *user_event_meta = nvds_acquire_user_meta_from_pool (batch_meta);
-        if (user_event_meta) {
-          user_event_meta->user_meta_data = (void *) msg_meta;
-          user_event_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
-          nvds_add_user_meta_to_frame(frame_meta, user_event_meta);
-        } else {
-          g_print ("Error in attaching event meta to buffer\n");
-        }
-
-	//threadpool thpool = thpool_init(1);
-	
-	/*coord.frame = frame_number;
-	coord.top = (int)msg_meta->bbox.top;
-	coord.left = (int)msg_meta->bbox.left;
-	coord.width = (int)msg_meta->bbox.width;
-	coord.height = (int)msg_meta->bbox.height;*/
-	
-	//thpool_add_work(thpool, (void*)send_bytes, &coord);
-    	//thpool_wait(thpool);
-    	//thpool_destroy(thpool);	
-	
-  	struct Coords *coord1 = u_data;
-	
-	coord1->frame = frame_number;
-	coord1->top = (int)msg_meta->bbox.top;
-	coord1->left = (int)msg_meta->bbox.left;
-	coord1->width = (int)msg_meta->bbox.width;
-	coord1->height = (int)msg_meta->bbox.height;
-	g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",coord1->top, coord1->left, coord1->width, coord1->height);
-	//guint n = (*coord1).sockfd;
-        //g_print("\n socket fd: %d \n", n);
-	send_bytes(*coord1);
-	//g_print("\n bbox top %d \n bbox left %d  \n bbox width %d \n bbox height %d \n",(int)msg_meta->bbox.top, (int)msg_meta->bbox.left, (int)msg_meta->bbox.width, (int)msg_meta->bbox.height);
-      }
+				send_bytes(*coord1);
+				}
+		  }
     }
-  }
-  g_print ("Frame Number = %d "
-      "Object Count = %d\n",
-      frame_number, object_count);
-  frame_number++;
-
-  return GST_PAD_PROBE_OK;
+  
+    g_print ("Frame Number = %d \nObject Count = %d\n",
+			frame_number, object_count);
+    frame_number++;
+    return GST_PAD_PROBE_OK;
 }
 
 static gboolean
@@ -334,278 +288,260 @@ bus_call (GstBus * bus, GstMessage * msg, gpointer data)
 int
 main (int argc, char *argv[])
 {
-  GMainLoop *loop = NULL;
-  GstElement *pipeline = NULL, *source = NULL, *filter = NULL;
-  GstElement *tee = NULL;
-  GstElement *nvstreammux = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL, *msgconv = NULL, *msgbroker = NULL;
-  GstElement *queue = NULL, *nvvidconv_enet = NULL,  *encoder = NULL, *payer = NULL, *enetsink = NULL;
-  GstElement *transform = NULL;
-  GstBus *bus = NULL;
-  GstCaps *filtercaps;
-  guint bus_watch_id;
-  GstPad *muxer_sink_pad = NULL;
-  GstPad *osd_sink_pad = NULL;
-  GstPad *tee_msg_pad = NULL;
-  GstPad *tee_enet_pad = NULL;
-  GstPad *sink_pad = NULL;
-  GstPad *src_pad = NULL;
-  GOptionContext *ctx = NULL;
-  GOptionGroup *group = NULL;
-  GError *error = NULL;
+	GMainLoop *loop = NULL;
+	GstElement *pipeline = NULL, *source = NULL, *filter = NULL, *tee = NULL;
+	GstElement *nvstreammux = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL, *msgconv = NULL, *msgbroker = NULL;
+	GstElement *queue = NULL, *nvvidconv_enet = NULL,  *encoder = NULL, *payer = NULL, *enetsink = NULL;
+	GstElement *transform = NULL;
+	GstBus *bus = NULL;
+	GstCaps *filtercaps;
+	guint bus_watch_id;
+	GstPad *muxer_sink_pad = NULL;
+	GstPad *osd_sink_pad = NULL;
+	GstPad *tee_msg_pad = NULL;
+	GstPad *tee_enet_pad = NULL;
+	GstPad *sink_pad = NULL;
+	GstPad *src_pad = NULL;
+	GOptionContext *ctx = NULL;
+	GOptionGroup *group = NULL;
+	GError *error = NULL;
 
-  int current_device = -1;
-  cudaGetDevice(&current_device);
-  struct cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, current_device);
+	int current_device = -1;
+	cudaGetDevice(&current_device);
+	struct cudaDeviceProp prop;
+	cudaGetDeviceProperties(&prop, current_device);
 
-  ctx = g_option_context_new ("Nvidia DeepStream Test4");
-  group = g_option_group_new ("test4", NULL, NULL, NULL, NULL);
+	ctx = g_option_context_new ("Nvidia DeepStream Test4");
+	group = g_option_group_new ("test4", NULL, NULL, NULL, NULL);
 
-  g_option_context_set_main_group (ctx, group);
-  g_option_context_add_group (ctx, gst_init_get_option_group ());
+	g_option_context_set_main_group (ctx, group);
+	g_option_context_add_group (ctx, gst_init_get_option_group ());
 
-  if (!g_option_context_parse (ctx, &argc, &argv, &error)) {
-    g_option_context_free (ctx);
-    g_printerr ("%s", error->message);
-    return -1;
-  }
-  g_option_context_free (ctx);
+	if (!g_option_context_parse (ctx, &argc, &argv, &error)) {
+		g_option_context_free (ctx);
+		g_printerr ("%s", error->message);
+		return -1;
+	}
+	g_option_context_free (ctx);
 
-  if (!proto_lib) {
-    g_printerr("missing protocol library or input video file\n");
-    g_printerr ("Usage: add data to this *.c file");
-    return -1;
-  }
+	if (!proto_lib) {
+		g_printerr("missing protocol library or input video file\n");
+		g_printerr ("Usage: add data to this *.c file");
+		return -1;
+	}
 
-  loop = g_main_loop_new (NULL, FALSE);
+	loop = g_main_loop_new (NULL, FALSE);
 
-  /* Create gstreamer elements */
-  /* Create Pipeline element that will form a connection of other elements */
-  pipeline = gst_pipeline_new ("custom-pipeline");
+	/* Create gstreamer elements */
+	/* Create Pipeline element that will form a connection of other elements */
+	pipeline = gst_pipeline_new ("custom-pipeline");
 
-  source = gst_element_factory_make ("nvarguscamerasrc", "source");
-  filter = gst_element_factory_make ("capsfilter","filter");
-  tee = gst_element_factory_make ("tee", "nvsink-tee");
+	source = gst_element_factory_make ("nvarguscamerasrc", "source");
+	filter = gst_element_factory_make ("capsfilter","filter");
+	tee = gst_element_factory_make ("tee", "nvsink-tee");
 
-  queue = gst_element_factory_make ("queue", "nvtee-que1");
-  nvvidconv_enet = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter-enet");
-  encoder = gst_element_factory_make ("nvv4l2h264enc","encoder");
-  payer = gst_element_factory_make ("rtph264pay","payer");
-  enetsink = gst_element_factory_make("udpsink","enetsink");
+	queue = gst_element_factory_make ("queue", "nvtee-que1");
+	nvvidconv_enet = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter-enet");
+	encoder = gst_element_factory_make ("nvv4l2h264enc","encoder");
+	payer = gst_element_factory_make ("rtph264pay","payer");
+	enetsink = gst_element_factory_make("udpsink","enetsink");
 
-  nvstreammux = gst_element_factory_make ("nvstreammux", "nvstreammux");
+	nvstreammux = gst_element_factory_make ("nvstreammux", "nvstreammux");
+	pgie = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
+	nvvidconv = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter");//from NV12 to RGBA
+	nvosd = gst_element_factory_make ("nvdsosd", "nv-onscreendisplay");
+	msgconv = gst_element_factory_make ("nvmsgconv", "nvmsg-converter");
+	msgbroker = gst_element_factory_make ("nvmsgbroker", "nvmsg-broker");
 
-  pgie = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
+	if ( !pipeline || !source || !filter || !tee  
+		|| !nvstreammux || !pgie || !nvvidconv || !nvosd || !msgconv || !msgbroker
+		|| !queue || !nvvidconv_enet || !encoder || !payer || !enetsink) {
+		g_printerr ("One element could not be created. Exiting.\n");
+		return -1;
+	}
 
-  /* Use convertor to convert from NV12 to RGBA as required by nvosd */
-  nvvidconv = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter");
-
-  /* Create OSD to draw on the converted RGBA buffer */
-  nvosd = gst_element_factory_make ("nvdsosd", "nv-onscreendisplay");
-
-  /* Create msg converter to generate payload from buffer metadata */
-  msgconv = gst_element_factory_make ("nvmsgconv", "nvmsg-converter");
-
-  /* Create msg broker to send payload to server */
-  msgbroker = gst_element_factory_make ("nvmsgbroker", "nvmsg-broker");
-
-  /* Create tee to render buffer and send message simultaneously*/
-
-  if (!pipeline || !source || !filter || !tee  
-      || !nvstreammux || !pgie || !nvvidconv || !nvosd || !msgconv || !msgbroker
-      || !queue || !nvvidconv_enet || !encoder || !payer || !enetsink) {
-    g_printerr ("One element could not be created. Exiting.\n");
-    return -1;
-  }
-
-  /* we set the input filename to the source element */
-  g_object_set (source, "sensor-id", 0, NULL);
-  g_object_set (source, "bufapi-version", 1, NULL);
-  filtercaps = gst_caps_new_simple ("video/x-raw(memory:NVMM)",
+	/* we set the input filename to the source element */
+	g_object_set (source, "sensor-id", 0, NULL);
+	g_object_set (source, "bufapi-version", 1, NULL);
+	filtercaps = gst_caps_new_simple ("video/x-raw(memory:NVMM)",
 	  "format",G_TYPE_STRING,"NV12",
           "width", G_TYPE_INT, 1920,
           "height", G_TYPE_INT, 1080,
-          "framerate",GST_TYPE_FRACTION,60,1,
- 	  NULL);
-  g_object_set (filter, "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
+          "framerate",GST_TYPE_FRACTION,30,1,
+ 	NULL);
+	g_object_set (filter, "caps", filtercaps, NULL);
+	gst_caps_unref (filtercaps);
 
-  g_object_set (encoder, "bitrate", 2000000, NULL);
-  g_object_set (encoder, "maxperf-enable", 1, NULL); //not sure if causes small latency 
-  g_object_set (encoder, "preset-level", 4, NULL); //not sure too
-  g_object_set (encoder, "profile", 2, NULL); //really makes latency small
-  g_object_set (encoder, "ratecontrol-enable", 1, NULL); //not sure
+	g_object_set (encoder, "bitrate", 2000000, NULL);
+	g_object_set (encoder, "maxperf-enable", 1, NULL); //not sure if causes small latency 
+	g_object_set (encoder, "preset-level", 4, NULL); //not sure too
+	g_object_set (encoder, "profile", 2, NULL); //really makes latency small
+	g_object_set (encoder, "ratecontrol-enable", 1, NULL); //not sure
 
-  g_object_set (payer, "config-interval", -1, NULL); //not surepayer
+	g_object_set (payer, "config-interval", 1, NULL); //not surepayer
 
-  g_object_set (enetsink, "host", HOST_ENET, NULL);
-  g_object_set (enetsink, "port", HOST_PORT_VIDEO, NULL);
-  g_object_set (enetsink, "sync", FALSE, NULL);
+	g_object_set (enetsink, "host", HOST_ENET, NULL);
+	g_object_set (enetsink, "port", HOST_PORT_VIDEO, NULL);
+	g_object_set (enetsink, "sync", FALSE, NULL);
 
-  g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
-  g_object_set (G_OBJECT (nvstreammux), "width", MUXER_OUTPUT_WIDTH, "height",
-      MUXER_OUTPUT_HEIGHT,
-      "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
-  g_object_set (G_OBJECT (pgie),
-      "config-file-path", PGIE_CONFIG_FILE, NULL);
+	g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
+	g_object_set (G_OBJECT (nvstreammux), 
+				"width", MUXER_OUTPUT_WIDTH, 
+				"height", MUXER_OUTPUT_HEIGHT,
+				"batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
+	g_object_set (G_OBJECT (pgie),
+		"config-file-path", PGIE_CONFIG_FILE, NULL);
 
-  g_object_set (G_OBJECT(msgconv), "config", MSCONV_CONFIG_FILE, NULL);
-  g_object_set (G_OBJECT(msgconv), "payload-type", schema_type, NULL);
-  g_object_set (G_OBJECT(msgconv), "msg2p-newapi", msg2p_meta, NULL);
-  g_object_set (G_OBJECT(msgconv), "frame-interval", frame_interval, NULL);
+	g_object_set (G_OBJECT(msgconv), "config", MSCONV_CONFIG_FILE, NULL);
+	g_object_set (G_OBJECT(msgconv), "payload-type", schema_type, NULL);
+	g_object_set (G_OBJECT(msgconv), "msg2p-newapi", msg2p_meta, NULL);
+	g_object_set (G_OBJECT(msgconv), "frame-interval", frame_interval, NULL);
 
-  g_object_set (G_OBJECT(msgbroker), "proto-lib", proto_lib,
+	g_object_set (G_OBJECT(msgbroker), "proto-lib", proto_lib,
                 "sync", FALSE, NULL);
-  g_object_set (G_OBJECT(msgbroker), "config", cfg_file, NULL);
+	g_object_set (G_OBJECT(msgbroker), "config", cfg_file, NULL);
 
 
-  /* we add a message handler */
-  bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
-  bus_watch_id = gst_bus_add_watch (bus, bus_call, loop);
-  gst_object_unref (bus);
+	/* we add a message handler */
+	bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
+	bus_watch_id = gst_bus_add_watch (bus, bus_call, loop);
+	gst_object_unref (bus);
 
-  /* Set up the pipeline */
-  /* we add all elements into the pipeline */
-  gst_bin_add_many (GST_BIN (pipeline),
-      source, filter, tee,
-      nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, 
-      queue, nvvidconv_enet, encoder, payer, enetsink,  NULL);
-
-  if(prop.integrated) {
-    if (!display_off)
-      gst_bin_add (GST_BIN (pipeline), transform);
-  }
-  /* we link the elements together */
-  /* file-source -> h264-parser -> nvh264-decoder -> nvstreammux ->
-   * nvinfer -> nvvidconv -> nvosd -> tee -> video-renderer
-   *                                      |
-   *                                      |-> msgconv -> msgbroker  */
+	/* Set up the pipeline */
+	/* we add all elements into the pipeline */
+	gst_bin_add_many (GST_BIN (pipeline),
+		source, filter, tee,
+		nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, 
+		queue, nvvidconv_enet, encoder, payer, enetsink,  NULL);
 
 /************************************************************************/
 
-  tee_msg_pad = gst_element_get_request_pad (tee, "src_%u");
-  if (!tee_msg_pad) {
-    g_printerr ("Unable to get request pads\n");
-    return -1;
-  }
+	tee_msg_pad = gst_element_get_request_pad (tee, "src_%u");
+	if (!tee_msg_pad) {
+		g_printerr ("Unable to get request pads\n");
+		return -1;
+	}
 
-  muxer_sink_pad = gst_element_get_request_pad (nvstreammux, "sink_0");
-  if (!muxer_sink_pad) {
-    g_printerr ("Streammux request sink pad failed. Exiting.\n");
-    return -1;
-  }
+	muxer_sink_pad = gst_element_get_request_pad (nvstreammux, "sink_0");
+	if (!muxer_sink_pad) {
+		g_printerr ("Streammux request sink pad failed. Exiting.\n");
+		return -1;
+	}
 
-  if (gst_pad_link (tee_msg_pad, muxer_sink_pad) != GST_PAD_LINK_OK) {
-    g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
-    return -1;
-  }
+	if (gst_pad_link (tee_msg_pad, muxer_sink_pad) != GST_PAD_LINK_OK) {
+		g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
+		return -1;
+	}
 
-  gst_object_unref (tee_msg_pad);
-  gst_object_unref (muxer_sink_pad); 
-
-/************************************************************************/
-/************************************************************************/
-
-  sink_pad = gst_element_get_static_pad (queue, "sink");
-  tee_enet_pad = gst_element_get_request_pad (tee, "src_%u");
-  if (!sink_pad || !tee_enet_pad) {
-    g_printerr ("Unable to get request pads\n");
-    return -1;
-  }
-
-  if (gst_pad_link (tee_enet_pad, sink_pad) != GST_PAD_LINK_OK) {
-    g_printerr ("Unable to link tee and message converter\n");
-    gst_object_unref (sink_pad);
-    return -1;
-  }
-
-  gst_object_unref (sink_pad);
-  gst_object_unref (tee_enet_pad);
-
-/////////
-  int sockfd;
-  struct sockaddr_in     servaddr;
-  if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-  }
-  memset(&servaddr, 0, sizeof(servaddr));       
-  servaddr.sin_family = AF_INET;
-  servaddr.sin_port = htons(HOST_PORT_UDP);
-  servaddr.sin_addr.s_addr = inet_addr(HOST_ENET);
-
-  struct Coords coord;
-  coord.sockfd = sockfd;
-  coord.servaddr.sin_family = servaddr.sin_family;
-  coord.servaddr.sin_port = servaddr.sin_port;
-  coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
-  g_print("\n COORDS: %d \n",coord.sockfd);
-  //struct Coords * coord1 = &coord;
-  //g_print("\n COORDS: %d \n",(*coord1).sockfd);
-
-/////////
-
+	gst_object_unref (tee_msg_pad);
+	gst_object_unref (muxer_sink_pad); 
 
 /************************************************************************/
 
+	sink_pad = gst_element_get_static_pad (queue, "sink");
+	tee_enet_pad = gst_element_get_request_pad (tee, "src_%u");
+	if (!sink_pad || !tee_enet_pad) {
+		g_printerr ("Unable to get request pads\n");
+		return -1;
+	}
 
-  if (!gst_element_link_many (source, filter, tee, NULL)) {
-    g_printerr ("Elements could not be linked1. Exiting.\n");
-    return -1;
-  }
+	if (gst_pad_link (tee_enet_pad, sink_pad) != GST_PAD_LINK_OK) {
+		g_printerr ("Unable to link tee and message converter\n");
+		gst_object_unref (sink_pad);
+		return -1;
+	}
 
-  if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, NULL)) {
+	gst_object_unref (sink_pad);
+	gst_object_unref (tee_enet_pad);
+
+/************************************************************************/
+
+	if (!gst_element_link_many (source, filter, tee, NULL)) {
+		g_printerr ("Elements could not be linked1. Exiting.\n");
+		return -1;
+	}
+
+	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, NULL)) {
+		g_printerr ("Elements could not be linked2. Exiting.\n");
+		return -1;
+	}
+  
+	/*
+	GstElement *fakesink = gst_element_factory_make ("fakesink", "fakesink");
+	gst_bin_add_many (GST_BIN (pipeline), fakesink, NULL);
+	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, fakesink, NULL)) {
     g_printerr ("Elements could not be linked2. Exiting.\n");
     return -1;
-  }
+	}
+	*/
 
+	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
+		g_printerr ("Elements could not be linked3. Exiting.\n");
+		return -1;
+	}
 
-  if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
-    g_printerr ("Elements could not be linked3. Exiting.\n");
-    return -1;
-  }
+/************************************************************************/
 
+	int sockfd;
+	struct sockaddr_in     servaddr;
+	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
+		perror("socket creation failed");
+		exit(EXIT_FAILURE);
+	}
+	memset(&servaddr, 0, sizeof(servaddr));       
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(HOST_PORT_UDP);
+	servaddr.sin_addr.s_addr = inet_addr(HOST_ENET);
+
+	struct Coords coord;
+	coord.sockfd = sockfd;
+	coord.servaddr.sin_family = servaddr.sin_family;
+	coord.servaddr.sin_port = servaddr.sin_port;
+	coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
+	//g_print("\n COORDS: %d \n",coord.sockfd);
+
+/************************************************************************/
   /* Lets add probe to get informed of the meta data generated, we add probe to
    * the sink pad of the osd element, since by that time, the buffer would have
    * had got all the metadata. */
-  osd_sink_pad = gst_element_get_static_pad (nvosd, "sink");
-  if (!osd_sink_pad)
-    g_print ("Unable to get sink pad\n");
-  else {
-    if(msg2p_meta == 0) //generate payload using eventMsgMeta
-        gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-            osd_sink_pad_buffer_probe, &coord, NULL);
+	osd_sink_pad = gst_element_get_static_pad (nvosd, "sink");
+	if (!osd_sink_pad)
+	g_print ("Unable to get sink pad\n");
+	else {
+		if(msg2p_meta == 0) //generate payload using eventMsgMeta
+			gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+				osd_sink_pad_buffer_probe, &coord, NULL);
     }
-  gst_object_unref (osd_sink_pad);
+	gst_object_unref (osd_sink_pad);
 
-
+/************************************************************************/
 
   /* Set the pipeline to "playing" state */
-  g_print ("Now playing...\n");
-  gst_element_set_state (pipeline, GST_STATE_PLAYING);
+	g_print ("Now playing...\n");
+	gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
   /* Wait till pipeline encounters an error or EOS */
-  g_print ("Running...\n");
-  g_main_loop_run (loop);
+	g_print ("Running...\n");
+	g_main_loop_run (loop);
 
   /* Out of the main loop, clean up nicely */
-  g_print ("Returned, stopping playback\n");
+	g_print ("Returned, stopping playback\n");
 
-  g_free (cfg_file);
-  g_free (topic);
-  g_free (conn_str);
-  g_free (proto_lib);
+	g_free (cfg_file);
+	g_free (topic);
+	g_free (conn_str);
+	g_free (proto_lib);
 
   /* Release the request pads from the tee, and unref them */
-  gst_element_release_request_pad (tee, tee_msg_pad);
-  gst_element_release_request_pad (tee, tee_enet_pad);
-  gst_object_unref (tee_msg_pad);
-  gst_object_unref (tee_enet_pad);
+	gst_element_release_request_pad (tee, tee_msg_pad);
+	gst_element_release_request_pad (tee, tee_enet_pad);
+	gst_object_unref (tee_msg_pad);
+	gst_object_unref (tee_enet_pad);
 
-  gst_element_set_state (pipeline, GST_STATE_NULL);
-  g_print ("Deleting pipeline\n");
-  gst_object_unref (GST_OBJECT (pipeline));
-  g_source_remove (bus_watch_id);
-  g_main_loop_unref (loop);
-  return 0;
+	gst_element_set_state (pipeline, GST_STATE_NULL);
+	g_print ("Deleting pipeline\n");
+	gst_object_unref (GST_OBJECT (pipeline));
+	g_source_remove (bus_watch_id);
+	g_main_loop_unref (loop);
+	return 0;
 }
