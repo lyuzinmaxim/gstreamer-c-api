@@ -33,8 +33,8 @@
 #define MUXER_OUTPUT_HEIGHT 1080
 
 
-#define HOST_ENET "10.0.111.10"
-#define HOST_PORT 31990
+#define HOST_ENET "192.168.0.107"
+#define HOST_PORT_VIDEO 31990
 #define HOST_PORT_UDP 52000
 
 /* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
@@ -439,7 +439,7 @@ main (int argc, char *argv[])
   g_object_set (payer, "config-interval", -1, NULL); //not surepayer
 
   g_object_set (enetsink, "host", HOST_ENET, NULL);
-  g_object_set (enetsink, "port", HOST_PORT, NULL);
+  g_object_set (enetsink, "port", HOST_PORT_VIDEO, NULL);
   g_object_set (enetsink, "sync", FALSE, NULL);
 
   g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
