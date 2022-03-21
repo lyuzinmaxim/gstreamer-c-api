@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include "thpool.h"
 
+#include <fcntl.h>
+
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
 
@@ -33,9 +35,10 @@
 #define MUXER_OUTPUT_HEIGHT 1080
 
 
-#define HOST_ENET "192.168.0.107"
+#define HOST_ENET 		"192.168.0.107"
+#define HOST_RECORD 	51000
 #define HOST_PORT_VIDEO 31990
-#define HOST_PORT_UDP 52000
+#define HOST_PORT_MSG 	52000
 
 /* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
  * based on the fastest source's framerate. */
@@ -59,7 +62,6 @@ struct Performance {
 	GstClockTime buf;
 };
 struct Coords {
-    int sockfd;
     int frame;
     int top;
     int left;
@@ -67,8 +69,50 @@ struct Coords {
     int height;
     float conf;
 	GstClockTime time_buf;
+    int sockfd;
     struct sockaddr_in servaddr;
+	struct sockaddr_in cliaddr;
 };
+
+struct Coords establish_connection
+(const char *client,unsigned short int *port, int server){
+	
+	int sockfd;
+	struct sockaddr_in servaddr, cliaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    memset(&cliaddr, 0, sizeof(cliaddr));
+	
+	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { ///socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+	
+	servaddr.sin_family    = AF_INET; // IPv4
+    servaddr.sin_addr.s_addr = inet_addr(client);
+    servaddr.sin_port = htons(*port);
+	
+	if (server==1){
+		if ( bind(sockfd, (const struct sockaddr *)&cliaddr, 
+				sizeof(cliaddr)) < 0 )
+		{
+			perror("bind failed");
+			exit(EXIT_FAILURE);
+		}
+	}
+	
+	struct Coords coord;
+    coord.sockfd = sockfd;
+    coord.servaddr.sin_family = servaddr.sin_family;
+    coord.servaddr.sin_port = servaddr.sin_port;
+    coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
+    coord.cliaddr = cliaddr;
+	
+	//fcntl(sockfd, F_SETFL, O_NONBLOCK);
+	//printf("\naaaaa\n");
+	
+	return coord;
+}
+
 
 void send_bytes(struct Coords coord){
     
@@ -499,28 +543,17 @@ main (int argc, char *argv[])
 
 /************************************************************************/
 
-	int sockfd;
-	struct sockaddr_in     servaddr;
-	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
-		perror("socket creation failed");
-		exit(EXIT_FAILURE);
-	}
-	memset(&servaddr, 0, sizeof(servaddr));       
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(HOST_PORT_UDP);
-	servaddr.sin_addr.s_addr = inet_addr(HOST_ENET);
-
-	struct Coords coord;
-	coord.sockfd = sockfd;
-	coord.servaddr.sin_family = servaddr.sin_family;
-	coord.servaddr.sin_port = servaddr.sin_port;
-	coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
-	coord.time_buf = g_get_monotonic_time();
-	//g_print("\n COORDS: %d \n",coord.sockfd);
-
-/************************************************************************/
-	//static struct Performance performance;
-	//performance.buf = GST_CLOCK_TIME_NONE;
+	const char client [64] = HOST_ENET;
+	unsigned short int port_msg = HOST_PORT_MSG;
+	unsigned short int port_record = HOST_RECORD;
+	
+	struct Coords send_messages;
+	send_messages = establish_connection(client,&port_msg, 0);	
+	send_messages.time_buf = g_get_monotonic_time();
+	
+	struct Coords recording;
+	recording = establish_connection(client,&port_record, 1);	
+	
 /************************************************************************/
 
   /* Lets add probe to get informed of the meta data generated, we add probe to
@@ -532,7 +565,7 @@ main (int argc, char *argv[])
 	else {
 		if(msg2p_meta == 0) //generate payload using eventMsgMeta
 			gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-				osd_sink_pad_buffer_probe, &coord, NULL);
+				osd_sink_pad_buffer_probe, &send_messages, NULL);
     }
 
 	gst_object_unref (osd_sink_pad);
