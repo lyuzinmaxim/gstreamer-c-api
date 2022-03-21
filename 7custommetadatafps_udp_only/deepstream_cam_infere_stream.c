@@ -509,15 +509,6 @@ main (int argc, char *argv[])
 		return -1;
 	}
   
-	/*
-	GstElement *fakesink = gst_element_factory_make ("fakesink", "fakesink");
-	gst_bin_add_many (GST_BIN (pipeline), fakesink, NULL);
-	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, fakesink, NULL)) {
-    g_printerr ("Elements could not be linked2. Exiting.\n");
-    return -1;
-	}
-	*/
-
 	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
 		g_printerr ("Elements could not be linked3. Exiting.\n");
 		return -1;
