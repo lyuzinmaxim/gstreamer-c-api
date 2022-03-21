@@ -147,6 +147,8 @@ smart_record_event_generator (struct Data *  data)
   msg = receive_payload(&data->connect);
   guint run = 0;
   
+  g_print("\n\nSMART RECORD EVENT GENERATOR CALLED\n\n");
+  
   
   if (run==0) {
 	  
@@ -664,7 +666,7 @@ main (int argc, char *argv[])
 		return -1;
 	}
 
-	payer_sink_pad = gst_element_get_static_pad (enetsink, "sink");
+	payer_sink_pad = gst_element_get_static_pad (payer, "sink");
 	if (!payer_sink_pad) {
 		g_printerr ("Streammux request sink pad failed. Exiting.\n");
 		return -1;
@@ -681,7 +683,7 @@ main (int argc, char *argv[])
 /************************************************************************/
 	
 	tee2_record_pad = gst_element_get_request_pad (tee2, "src_%u");
-	parser_sink_pad = gst_element_get_static_pad (depayer, "sink");
+	parser_sink_pad = gst_element_get_static_pad (parser, "sink");
 
 	if (!parser_sink_pad || !tee2_record_pad) {
 		g_printerr ("Unable to get request pads\n");
@@ -714,16 +716,16 @@ main (int argc, char *argv[])
 		return -1;
 	}
 	*/
-	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, tee2, NULL)) {
+	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, tee2, NULL)) {
 		g_printerr ("Elements could not be linked3. Exiting.\n");
 		return -1;
 	}
 
-	/*if (!gst_element_link_many (payer, enetsink, NULL)) {
+	if (!gst_element_link_many (payer, enetsink, NULL)) {
 		g_printerr ("Elements could not be linked4. Exiting.\n");
 		return -1;
-	}*/
-	if (!gst_element_link_many (depayer, parser, nvdssrCtx->recordbin, NULL)) {
+	}
+	if (!gst_element_link_many (parser, nvdssrCtx->recordbin, NULL)) {
 		g_printerr ("Elements could not be linked5. Exiting.\n");
 		return -1;
 	}
