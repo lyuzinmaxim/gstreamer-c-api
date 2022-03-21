@@ -284,24 +284,8 @@ main (int argc, char *argv[])
 	GOptionContext *ctx = NULL;
 	GOptionGroup *group = NULL;
 	GError *error = NULL;
-
-	int current_device = -1;
-	cudaGetDevice(&current_device);
-	struct cudaDeviceProp prop;
-	cudaGetDeviceProperties(&prop, current_device);
-
-	ctx = g_option_context_new ("Nvidia DeepStream Test4");
-	group = g_option_group_new ("test4", NULL, NULL, NULL, NULL);
-
-	g_option_context_set_main_group (ctx, group);
-	g_option_context_add_group (ctx, gst_init_get_option_group ());
-
-	if (!g_option_context_parse (ctx, &argc, &argv, &error)) {
-		g_option_context_free (ctx);
-		g_printerr ("%s", error->message);
-		return -1;
-	}
-	g_option_context_free (ctx);
+		
+	gst_init (&argc, &argv);
 
 	loop = g_main_loop_new (NULL, FALSE);
 
@@ -356,10 +340,10 @@ main (int argc, char *argv[])
 	g_object_set (enetsink, "sync", FALSE, NULL);
 
 	g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
-	g_object_set (G_OBJECT (nvstreammux), 
-				"width", MUXER_OUTPUT_WIDTH, 
-				"height", MUXER_OUTPUT_HEIGHT,
-				"batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
+	g_object_set (  G_OBJECT (nvstreammux), 
+					"width", MUXER_OUTPUT_WIDTH, 
+					"height", MUXER_OUTPUT_HEIGHT,
+					"batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
 	g_object_set (G_OBJECT (pgie),
 		"config-file-path", PGIE_CONFIG_FILE, NULL);
 
@@ -448,9 +432,6 @@ main (int argc, char *argv[])
 	
 /************************************************************************/
 
-  /* Lets add probe to get informed of the meta data generated, we add probe to
-   * the sink pad of the osd element, since by that time, the buffer would have
-   * had got all the metadata. */
 	osd_sink_pad = gst_element_get_static_pad (nvosd, "sink");
 	if (!osd_sink_pad)
 	g_print ("Unable to get sink pad\n");
@@ -459,11 +440,9 @@ main (int argc, char *argv[])
 			gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
 				osd_sink_pad_buffer_probe, &send_messages, NULL);
     }
-
 	gst_object_unref (osd_sink_pad);
 
 /************************************************************************/
-
 
   /* Set the pipeline to "playing" state */
 	g_print ("Now playing...\n");
@@ -473,7 +452,6 @@ main (int argc, char *argv[])
 	g_print ("Running...\n");
 	g_main_loop_run (loop);
 
-	
   /* Out of the main loop, clean up nicely */
 	g_print ("Returned, stopping playback\n");
 
@@ -490,9 +468,6 @@ main (int argc, char *argv[])
 
 	gst_element_set_state (pipeline, GST_STATE_NULL);
 	g_print ("Deleting pipeline\n");
-	/*******************************/
-	//g_print ("Average fps %f\n",((perf_measure.count-1)*src_cnt*1000000.0)/perf_measure.total_time);
-	/*******************************/
 	gst_object_unref (GST_OBJECT (pipeline));
 	g_source_remove (bus_watch_id);
 	g_main_loop_unref (loop);
