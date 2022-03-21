@@ -1,3 +1,6 @@
+subdirectory "socket" is the main code now
+
+
 Working version is in "root" without video output, works great
 
 Cache starts working only since "I" (Intracoded) frame was coming
