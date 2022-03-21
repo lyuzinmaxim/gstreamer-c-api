@@ -54,13 +54,7 @@ static gint frame_interval = 1;
 static gboolean display_off = FALSE;
 
 gint frame_number = 0;
-gchar pgie_classes_str[4][32] = { "Vehicle", "TwoWheeler", "Person",
-  "Roadsign"
-};
 
-struct Performance {
-	GstClockTime buf;
-};
 struct Coords {
     int frame;
     int top;
@@ -116,7 +110,6 @@ struct Coords establish_connection
 
 void send_bytes(struct Coords coord){
     
-
     int sockfd_ = coord.sockfd;
     uint16_t frame_ = coord.frame;
     uint16_t top_ = coord.top;
@@ -129,22 +122,16 @@ void send_bytes(struct Coords coord){
     
     msg[0] = 0xAA;
     msg[1] = 0xAA;
-
     msg[2] = (frame_ >> 8) & 0xFF;
     msg[3] = (frame_ >> 0) & 0xFF;
-
     msg[4] = 0x00;
     msg[5] = 0x01;
-
+	msg[6] = (left_ >> 8) & 0xFF;
+    msg[7] = (left_ >> 0) & 0xFF;
     msg[8] = (top_ >> 8) & 0xFF;
     msg[9] = (top_ >> 0) & 0xFF;
-
-    msg[6] = (left_ >> 8) & 0xFF;
-    msg[7] = (left_ >> 0) & 0xFF;
-
     msg[10] = (width_ >> 8) & 0xFF;
     msg[11] = (width_ >> 0) & 0xFF;
-
     msg[12] = (height_ >> 8) & 0xFF;
     msg[13] = (height_ >> 0) & 0xFF;
 
@@ -161,82 +148,14 @@ void send_bytes(struct Coords coord){
      printf("%d: %02X ",i, msg[i]);
     }*/
       
-    sendto(coord.sockfd, 
-	  msg, 
-	  sizeof(msg),
-          MSG_CONFIRM, 
-          (const struct sockaddr *) &coord.servaddr,
-          sizeof(coord.servaddr));
-
+    sendto( coord.sockfd, 
+			msg, 
+			sizeof(msg),
+			MSG_CONFIRM, 
+			(const struct sockaddr *) &coord.servaddr,
+			sizeof(coord.servaddr));
 }
 
-static void generate_ts_rfc3339 (char *buf, int buf_size)
-{
-  time_t tloc;
-  struct tm tm_log;
-  struct timespec ts;
-  char strmsec[6]; //.nnnZ\0
-
-  clock_gettime(CLOCK_REALTIME,  &ts);
-  memcpy(&tloc, (void *)(&ts.tv_sec), sizeof(time_t));
-  gmtime_r(&tloc, &tm_log);
-  strftime(buf, buf_size,"%Y-%m-%dT%H:%M:%S", &tm_log);
-  int ms = ts.tv_nsec/1000000;
-  g_snprintf(strmsec, sizeof(strmsec),".%.3dZ", ms);
-  strncat(buf, strmsec, buf_size);
-}
-
-
-static void meta_free_func (gpointer data, gpointer user_data)
-{
-  NvDsUserMeta *user_meta = (NvDsUserMeta *) data;
-  NvDsEventMsgMeta *srcMeta = (NvDsEventMsgMeta *) user_meta->user_meta_data;
-
-  g_free (srcMeta->ts);
-  g_free (srcMeta->sensorStr);
-
-  if (srcMeta->objSignature.size > 0) {
-    g_free (srcMeta->objSignature.signature);
-    srcMeta->objSignature.size = 0;
-  }
-
-  if(srcMeta->objectId) {
-    g_free (srcMeta->objectId);
-  }
-
-  if (srcMeta->extMsgSize > 0) {
-    if (srcMeta->objType == NVDS_OBJECT_TYPE_VEHICLE) {
-      NvDsVehicleObject *obj = (NvDsVehicleObject *) srcMeta->extMsg;
-      if (obj->type)
-        g_free (obj->type);
-      if (obj->color)
-        g_free (obj->color);
-      if (obj->make)
-        g_free (obj->make);
-      if (obj->model)
-        g_free (obj->model);
-      if (obj->license)
-        g_free (obj->license);
-      if (obj->region)
-        g_free (obj->region);
-    } else if (srcMeta->objType == NVDS_OBJECT_TYPE_PERSON) {
-      NvDsPersonObject *obj = (NvDsPersonObject *) srcMeta->extMsg;
-
-      if (obj->gender)
-        g_free (obj->gender);
-      if (obj->cap)
-        g_free (obj->cap);
-      if (obj->hair)
-        g_free (obj->hair);
-      if (obj->apparel)
-        g_free (obj->apparel);
-    }
-    g_free (srcMeta->extMsg);
-    srcMeta->extMsgSize = 0;
-  }
-  g_free (user_meta->user_meta_data);
-  user_meta->user_meta_data = NULL;
-}
 
 
 /* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
