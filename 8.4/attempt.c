@@ -458,6 +458,7 @@ main (int argc, char *argv[])
 	GstElement *nvstreammux = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL, *msgconv = NULL, *msgbroker = NULL;
 	GstElement *queue = NULL, *nvvidconv_enet = NULL,  *encoder = NULL, *payer = NULL, *enetsink = NULL;
 	GstElement *transform = NULL;
+	GstElement *tee2 = NULL, *depayer = NULL, *parser = NULL; 
 	NvDsSRContext *nvdssrCtx = NULL;
 	
 
@@ -473,6 +474,12 @@ main (int argc, char *argv[])
 	GOptionContext *ctx = NULL;
 	GOptionGroup *group = NULL;
 	GError *error = NULL;
+	
+	GstPad *tee2_enet_pad = NULL;
+	GstPad *tee2_record_pad = NULL;
+	GstPad *payer_sink_pad = NULL;
+	GstPad *parser_sink_pad = NULL;
+
 
 	int current_device = -1;
 	cudaGetDevice(&current_device);
@@ -529,11 +536,23 @@ main (int argc, char *argv[])
 	nvosd = gst_element_factory_make ("nvdsosd", "nv-onscreendisplay");
 	msgconv = gst_element_factory_make ("nvmsgconv", "nvmsg-converter");
 	msgbroker = gst_element_factory_make ("nvmsgbroker", "nvmsg-broker");
+	
+	tee2 = gst_element_factory_make ("tee", "nvsink-tee2");
+	parser = gst_element_factory_make ("h264parse", "parser");
 
 	if ( !pipeline || !source || !filter || !tee  
 		|| !nvstreammux || !pgie || !nvvidconv || !nvosd || !msgconv || !msgbroker
 		|| !queue || !nvvidconv_enet || !encoder || !payer || !enetsink) {
 		g_printerr ("One element could not be created. Exiting.\n");
+		return -1;
+	}
+
+	if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
+		g_printerr ("Failed to create smart record bin");
+		return -1;
+	}
+	if ( !tee2 || !parser ) {
+		g_printerr ("New elements could not be created. Exiting.\n");
 		return -1;
 	}
 
@@ -590,6 +609,9 @@ main (int argc, char *argv[])
 		source, filter, tee,
 		nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, 
 		queue, nvvidconv_enet, encoder, payer, enetsink,  NULL);
+	
+	gst_bin_add_many (GST_BIN (pipeline),
+		tee2, parser,  NULL);
 
 /************************************************************************/
 
@@ -633,6 +655,47 @@ main (int argc, char *argv[])
 
 /************************************************************************/
 
+	tee2_enet_pad = gst_element_get_request_pad (tee2, "src_%u");
+	if (!tee2_enet_pad) {
+		g_printerr ("Unable to get request pads\n");
+		return -1;
+	}
+
+	payer_sink_pad = gst_element_get_static_pad (payer, "sink");
+	if (!payer_sink_pad) {
+		g_printerr ("Streammux request sink pad failed. Exiting.\n");
+		return -1;
+	}
+
+	if (gst_pad_link (tee2_enet_pad, payer_sink_pad) != GST_PAD_LINK_OK) {
+		g_printerr ("Failed to link tee2 enet. Exiting.\n");
+		return -1;
+	}
+
+	gst_object_unref (tee2_enet_pad);
+	gst_object_unref (payer_sink_pad); 
+
+/************************************************************************/
+	
+	tee2_record_pad = gst_element_get_request_pad (tee2, "src_%u");
+	parser_sink_pad = gst_element_get_static_pad (parser, "sink");
+
+	if (!parser_sink_pad || !tee2_record_pad) {
+		g_printerr ("Unable to get request pads\n");
+		return -1;
+	}
+
+	if (gst_pad_link (tee2_record_pad,parser_sink_pad) != GST_PAD_LINK_OK) {
+		g_printerr ("Unable to link tee and message converter\n");
+		//gst_object_unref (sink_pad);
+		return -1;
+	}
+
+	gst_object_unref (parser_sink_pad);
+	gst_object_unref (tee2_record_pad);
+
+/************************************************************************/
+
 	if (!gst_element_link_many (source, filter, tee, NULL)) {
 		g_printerr ("Elements could not be linked1. Exiting.\n");
 		return -1;
@@ -642,21 +705,25 @@ main (int argc, char *argv[])
 		g_printerr ("Elements could not be linked2. Exiting.\n");
 		return -1;
 	}
-  
 	/*
-	GstElement *fakesink = gst_element_factory_make ("fakesink", "fakesink");
-	gst_bin_add_many (GST_BIN (pipeline), fakesink, NULL);
-	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, fakesink, NULL)) {
-    g_printerr ("Elements could not be linked2. Exiting.\n");
-    return -1;
-	}
-	*/
-
 	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
 		g_printerr ("Elements could not be linked3. Exiting.\n");
 		return -1;
 	}
+	*/
+	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, tee2, NULL)) {
+		g_printerr ("Elements could not be linked3. Exiting.\n");
+		return -1;
+	}
 
+	if (!gst_element_link_many (payer, enetsink, NULL)) {
+		g_printerr ("Elements could not be linked4. Exiting.\n");
+		return -1;
+	}
+	/*if (!gst_element_link_many (parser, nvdssrCtx->recordbin, NULL)) {
+		g_printerr ("Elements could not be linked5. Exiting.\n");
+		return -1;
+	}*/
 /************************************************************************/
 
 	const char client [64] = HOST_ENET;
