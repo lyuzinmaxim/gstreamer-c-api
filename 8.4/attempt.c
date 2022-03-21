@@ -41,7 +41,7 @@
 #define SMART_REC_INTERVAL 0.5
 
 #define HOST_ENET 		"192.168.0.107"
-#define HOST_RECORD 	51000
+#define HOST_RECORD 	8080
 #define HOST_PORT_VIDEO 31990
 #define HOST_PORT_MSG 	52000
 
@@ -539,6 +539,7 @@ main (int argc, char *argv[])
 	
 	tee2 = gst_element_factory_make ("tee", "nvsink-tee2");
 	parser = gst_element_factory_make ("h264parse", "parser");
+	depayer = gst_element_factory_make ("rtph264depay", "depay");
 
 	if ( !pipeline || !source || !filter || !tee  
 		|| !nvstreammux || !pgie || !nvvidconv || !nvosd || !msgconv || !msgbroker
@@ -551,7 +552,7 @@ main (int argc, char *argv[])
 		g_printerr ("Failed to create smart record bin");
 		return -1;
 	}
-	if ( !tee2 || !parser ) {
+	if ( !tee2 || !parser || !depayer ) {
 		g_printerr ("New elements could not be created. Exiting.\n");
 		return -1;
 	}
@@ -611,7 +612,9 @@ main (int argc, char *argv[])
 		queue, nvvidconv_enet, encoder, payer, enetsink,  NULL);
 	
 	gst_bin_add_many (GST_BIN (pipeline),
-		tee2, parser,  NULL);
+		tee2, parser, depayer, NULL);
+	gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
+
 
 /************************************************************************/
 
@@ -661,7 +664,7 @@ main (int argc, char *argv[])
 		return -1;
 	}
 
-	payer_sink_pad = gst_element_get_static_pad (payer, "sink");
+	payer_sink_pad = gst_element_get_static_pad (enetsink, "sink");
 	if (!payer_sink_pad) {
 		g_printerr ("Streammux request sink pad failed. Exiting.\n");
 		return -1;
@@ -678,7 +681,7 @@ main (int argc, char *argv[])
 /************************************************************************/
 	
 	tee2_record_pad = gst_element_get_request_pad (tee2, "src_%u");
-	parser_sink_pad = gst_element_get_static_pad (parser, "sink");
+	parser_sink_pad = gst_element_get_static_pad (depayer, "sink");
 
 	if (!parser_sink_pad || !tee2_record_pad) {
 		g_printerr ("Unable to get request pads\n");
@@ -711,19 +714,19 @@ main (int argc, char *argv[])
 		return -1;
 	}
 	*/
-	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, tee2, NULL)) {
+	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, tee2, NULL)) {
 		g_printerr ("Elements could not be linked3. Exiting.\n");
 		return -1;
 	}
 
-	if (!gst_element_link_many (payer, enetsink, NULL)) {
+	/*if (!gst_element_link_many (payer, enetsink, NULL)) {
 		g_printerr ("Elements could not be linked4. Exiting.\n");
 		return -1;
-	}
-	/*if (!gst_element_link_many (parser, nvdssrCtx->recordbin, NULL)) {
+	}*/
+	if (!gst_element_link_many (depayer, parser, nvdssrCtx->recordbin, NULL)) {
 		g_printerr ("Elements could not be linked5. Exiting.\n");
 		return -1;
-	}*/
+	}
 /************************************************************************/
 
 	const char client [64] = HOST_ENET;
@@ -735,7 +738,7 @@ main (int argc, char *argv[])
 	send_messages.time_buf = g_get_monotonic_time();
 	
 	struct Coords recording;
-	recording = establish_connection(client,&port_record, 1);
+	recording = establish_connection("127.0.0.1",&port_record, 1);
 	struct Data *data = g_new0(struct Data, 1);
 	data->connect = recording;
 	data->nvdssrctx = nvdssrCtx;
@@ -756,6 +759,10 @@ main (int argc, char *argv[])
 
 	gst_object_unref (osd_sink_pad);
 
+	if (nvdssrCtx) {
+    g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
+        data);
+	}
 /************************************************************************/
 
 
