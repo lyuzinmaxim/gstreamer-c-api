@@ -5,11 +5,9 @@
 #include <time.h>
 #include <cuda_runtime_api.h>
 #include <sys/timeb.h>
-
-#include "/opt/nvidia/deepstream/deepstream-6.0/sources/includes/gstnvdsmeta.h"
-#include "/opt/nvidia/deepstream/deepstream-6.0/sources/includes/gst-nvdssr.h"
-
+			
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -18,16 +16,16 @@
 #include <byteswap.h>
 #include <pthread.h>
 #include <stdint.h>
+#include "thpool.h"
 
 #include <fcntl.h>
-
-#include "nvdsmeta_schema.h"
 #include <poll.h>
 
-#define MAX_DISPLAY_LEN 64
-#define MAX_TIME_STAMP_LEN 32
-#define PGIE_CLASS_ID_VEHICLE 0
-#define PGIE_CLASS_ID_PERSON 2
+#include "gst-nvdssr.h"
+#include "gstnvdsmeta.h"
+#include "nvdsmeta_schema.h"
+
+#define PGIE_CLASS_ID 0
 #define PGIE_CONFIG_FILE  "infer_config.txt"
 #define MSCONV_CONFIG_FILE "dstest4_msgconv_config.txt"
 #define MUXER_OUTPUT_WIDTH 1920
@@ -39,7 +37,7 @@
 #define START_TIME 0
 #define SMART_REC_DURATION 100
 #define SMART_REC_INTERVAL 0.5
-
+			
 #define HOST_ENET 		"192.168.0.107"
 #define HOST_RECORD 	8080
 #define HOST_PORT_VIDEO 31990
@@ -75,10 +73,8 @@ struct Coords {
 
 struct Data {
     NvDsSRContext* nvdssrctx;
-    struct Coords connect;
+    struct Coords coords;
 };
-
-/******************************************/
 
 char* receive_payload(struct Coords * structure){
     
@@ -90,7 +86,7 @@ char* receive_payload(struct Coords * structure){
     static char msg[512];
 	
 	printf("Hit RETURN or wait 2.5 seconds for timeout\n");
-    int num_events = poll(pfds, 1, -1); // 2.5 second timeout
+    int num_events = poll(pfds, 1, -1); // inf timeout
 	
 	if (num_events == 0) {
 		printf("Poll timed out!\n");
@@ -109,6 +105,45 @@ char* receive_payload(struct Coords * structure){
 	//printf("\n that is size %d\n",sizeof(msg));
 	
 	return msg;
+}
+
+struct Coords establish_connection
+(const char *client,unsigned short int *port, int server){
+	
+	int sockfd;
+	struct sockaddr_in servaddr, cliaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    memset(&cliaddr, 0, sizeof(cliaddr));
+	
+	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { ///socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+	
+	servaddr.sin_family    = AF_INET; // IPv4
+    servaddr.sin_addr.s_addr = inet_addr(client);
+    servaddr.sin_port = htons(*port);
+	
+	if (server==1){
+		if ( bind(sockfd, (const struct sockaddr *)&servaddr, 
+				sizeof(servaddr)) < 0 )
+		{
+			perror("bind failed");
+			exit(EXIT_FAILURE);
+		}
+	}
+	
+	struct Coords coord;
+    coord.sockfd = sockfd;
+    coord.servaddr.sin_family = servaddr.sin_family;
+    coord.servaddr.sin_port = servaddr.sin_port;
+    coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
+    coord.cliaddr = cliaddr;
+	
+	//fcntl(sockfd, F_SETFL, O_NONBLOCK);
+	//printf("\naaaaa\n");
+	
+	return coord;
 }
 
 static gpointer
@@ -144,10 +179,8 @@ smart_record_event_generator (struct Data *  data)
   guint duration = SMART_REC_DURATION;
   
   char* msg;
-  msg = receive_payload(&data->connect);
+  msg = receive_payload(&data->coords);
   guint run = 0;
-  
-  g_print("\n\nSMART RECORD EVENT GENERATOR CALLED\n\n");
   
   
   if (run==0) {
@@ -178,51 +211,9 @@ smart_record_event_generator (struct Data *  data)
   }
   return TRUE;
 }
-/******************************************/
-
-struct Coords establish_connection
-(const char *client,unsigned short int *port, int server){
-	
-	int sockfd;
-	struct sockaddr_in servaddr, cliaddr;
-    memset(&servaddr, 0, sizeof(servaddr));
-    memset(&cliaddr, 0, sizeof(cliaddr));
-	
-	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { ///socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-	
-	servaddr.sin_family    = AF_INET; // IPv4
-    servaddr.sin_addr.s_addr = inet_addr(client);
-    servaddr.sin_port = htons(*port);
-	
-	if (server==1){
-		if ( bind(sockfd, (const struct sockaddr *)&cliaddr, 
-				sizeof(cliaddr)) < 0 )
-		{
-			perror("bind failed");
-			exit(EXIT_FAILURE);
-		}
-	}
-	
-	struct Coords coord;
-    coord.sockfd = sockfd;
-    coord.servaddr.sin_family = servaddr.sin_family;
-    coord.servaddr.sin_port = servaddr.sin_port;
-    coord.servaddr.sin_addr.s_addr = servaddr.sin_addr.s_addr;
-    coord.cliaddr = cliaddr;
-	
-	//fcntl(sockfd, F_SETFL, O_NONBLOCK);
-	//printf("\naaaaa\n");
-	
-	return coord;
-}
-
 
 void send_bytes(struct Coords coord){
     
-
     int sockfd_ = coord.sockfd;
     uint16_t frame_ = coord.frame;
     uint16_t top_ = coord.top;
@@ -235,22 +226,16 @@ void send_bytes(struct Coords coord){
     
     msg[0] = 0xAA;
     msg[1] = 0xAA;
-
     msg[2] = (frame_ >> 8) & 0xFF;
     msg[3] = (frame_ >> 0) & 0xFF;
-
     msg[4] = 0x00;
     msg[5] = 0x01;
-
+	msg[6] = (left_ >> 8) & 0xFF;
+    msg[7] = (left_ >> 0) & 0xFF;
     msg[8] = (top_ >> 8) & 0xFF;
     msg[9] = (top_ >> 0) & 0xFF;
-
-    msg[6] = (left_ >> 8) & 0xFF;
-    msg[7] = (left_ >> 0) & 0xFF;
-
     msg[10] = (width_ >> 8) & 0xFF;
     msg[11] = (width_ >> 0) & 0xFF;
-
     msg[12] = (height_ >> 8) & 0xFF;
     msg[13] = (height_ >> 0) & 0xFF;
 
@@ -267,82 +252,14 @@ void send_bytes(struct Coords coord){
      printf("%d: %02X ",i, msg[i]);
     }*/
       
-    sendto(coord.sockfd, 
-	  msg, 
-	  sizeof(msg),
-          MSG_CONFIRM, 
-          (const struct sockaddr *) &coord.servaddr,
-          sizeof(coord.servaddr));
-
+    sendto( coord.sockfd, 
+			msg, 
+			sizeof(msg),
+			MSG_CONFIRM, 
+			(const struct sockaddr *) &coord.servaddr,
+			sizeof(coord.servaddr));
 }
 
-static void generate_ts_rfc3339 (char *buf, int buf_size)
-{
-  time_t tloc;
-  struct tm tm_log;
-  struct timespec ts;
-  char strmsec[6]; //.nnnZ\0
-
-  clock_gettime(CLOCK_REALTIME,  &ts);
-  memcpy(&tloc, (void *)(&ts.tv_sec), sizeof(time_t));
-  gmtime_r(&tloc, &tm_log);
-  strftime(buf, buf_size,"%Y-%m-%dT%H:%M:%S", &tm_log);
-  int ms = ts.tv_nsec/1000000;
-  g_snprintf(strmsec, sizeof(strmsec),".%.3dZ", ms);
-  strncat(buf, strmsec, buf_size);
-}
-
-
-static void meta_free_func (gpointer data, gpointer user_data)
-{
-  NvDsUserMeta *user_meta = (NvDsUserMeta *) data;
-  NvDsEventMsgMeta *srcMeta = (NvDsEventMsgMeta *) user_meta->user_meta_data;
-
-  g_free (srcMeta->ts);
-  g_free (srcMeta->sensorStr);
-
-  if (srcMeta->objSignature.size > 0) {
-    g_free (srcMeta->objSignature.signature);
-    srcMeta->objSignature.size = 0;
-  }
-
-  if(srcMeta->objectId) {
-    g_free (srcMeta->objectId);
-  }
-
-  if (srcMeta->extMsgSize > 0) {
-    if (srcMeta->objType == NVDS_OBJECT_TYPE_VEHICLE) {
-      NvDsVehicleObject *obj = (NvDsVehicleObject *) srcMeta->extMsg;
-      if (obj->type)
-        g_free (obj->type);
-      if (obj->color)
-        g_free (obj->color);
-      if (obj->make)
-        g_free (obj->make);
-      if (obj->model)
-        g_free (obj->model);
-      if (obj->license)
-        g_free (obj->license);
-      if (obj->region)
-        g_free (obj->region);
-    } else if (srcMeta->objType == NVDS_OBJECT_TYPE_PERSON) {
-      NvDsPersonObject *obj = (NvDsPersonObject *) srcMeta->extMsg;
-
-      if (obj->gender)
-        g_free (obj->gender);
-      if (obj->cap)
-        g_free (obj->cap);
-      if (obj->hair)
-        g_free (obj->hair);
-      if (obj->apparel)
-        g_free (obj->apparel);
-    }
-    g_free (srcMeta->extMsg);
-    srcMeta->extMsgSize = 0;
-  }
-  g_free (user_meta->user_meta_data);
-  user_meta->user_meta_data = NULL;
-}
 
 
 /* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
@@ -388,7 +305,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 			continue;
 			}
 
-			if (obj_meta->class_id == PGIE_CLASS_ID_VEHICLE)
+			if (obj_meta->class_id == PGIE_CLASS_ID)
 				object_count++;
 				
 				if (!(frame_number % frame_interval)) {
@@ -405,7 +322,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 				coord1->left = (int)obj_meta->rect_params.left;
 				coord1->width = (int)obj_meta->rect_params.width;
 				coord1->height = (int)obj_meta->rect_params.height;
-				g_print("\n infernce FPS %f \n bbox top %d \n bbox left %d \n bbox width %d \n bbox height %d \n",
+				g_print("FPS %f top %d left %d width %d height %d\n",
 					result,
 					coord1->top, 
 					coord1->left, 
@@ -413,13 +330,12 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 					coord1->height);
 
 				send_bytes(*coord1);
-					
 				}
 		  }
     }
   
-    g_print ("%d frame, %d objects\n",
-			frame_number, object_count);
+    /*g_print ("%d frame, %d objects\n",
+			frame_number, object_count);*/
     frame_number++;
     return GST_PAD_PROBE_OK;
 }
@@ -452,18 +368,23 @@ bus_call (GstBus * bus, GstMessage * msg, gpointer data)
   return TRUE;
 }
 
+void dummy(){
+	printf("\n\nG_TIMEOUT_SUCCESSFUL\n\n");
+}
+
 int
 main (int argc, char *argv[])
 {
 	GMainLoop *loop = NULL;
 	GstElement *pipeline = NULL, *source = NULL, *filter = NULL, *tee = NULL;
-	GstElement *nvstreammux = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL, *msgconv = NULL, *msgbroker = NULL;
+	GstElement *nvstreammux = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL, *fakesink = NULL;
 	GstElement *queue = NULL, *nvvidconv_enet = NULL,  *encoder = NULL, *payer = NULL, *enetsink = NULL;
 	GstElement *transform = NULL;
-	GstElement *tee2 = NULL, *depayer = NULL, *parser = NULL; 
-	NvDsSRContext *nvdssrCtx = NULL;
 	
+	GstElement *tee2 = NULL, *parser = NULL;
+	NvDsSRContext *nvdssrCtx = NULL;
 
+	
 	GstBus *bus = NULL;
 	GstCaps *filtercaps;
 	guint bus_watch_id;
@@ -477,17 +398,6 @@ main (int argc, char *argv[])
 	GOptionGroup *group = NULL;
 	GError *error = NULL;
 	
-	GstPad *tee2_enet_pad = NULL;
-	GstPad *tee2_record_pad = NULL;
-	GstPad *payer_sink_pad = NULL;
-	GstPad *parser_sink_pad = NULL;
-
-
-	int current_device = -1;
-	cudaGetDevice(&current_device);
-	struct cudaDeviceProp prop;
-	cudaGetDeviceProperties(&prop, current_device);
-	
 	NvDsSRInitParams params = { 0 };
 
 	params.containerType = SMART_REC_CONTAINER;
@@ -496,30 +406,12 @@ main (int argc, char *argv[])
 	params.callback = smart_record_callback;
 	params.fileNamePrefix = "testing";
 	params.dirpath = "/home/maxim/Videos";
-
-	ctx = g_option_context_new ("Nvidia DeepStream Test4");
-	group = g_option_group_new ("test4", NULL, NULL, NULL, NULL);
-
-	g_option_context_set_main_group (ctx, group);
-	g_option_context_add_group (ctx, gst_init_get_option_group ());
-
-	if (!g_option_context_parse (ctx, &argc, &argv, &error)) {
-		g_option_context_free (ctx);
-		g_printerr ("%s", error->message);
-		return -1;
-	}
-	g_option_context_free (ctx);
-
-	if (!proto_lib) {
-		g_printerr("missing protocol library or input video file\n");
-		g_printerr ("Usage: add data to this *.c file");
-		return -1;
-	}
+		
+	gst_init (&argc, &argv);
 
 	loop = g_main_loop_new (NULL, FALSE);
 
 	/* Create gstreamer elements */
-	/* Create Pipeline element that will form a connection of other elements */
 	pipeline = gst_pipeline_new ("custom-pipeline");
 
 	source = gst_element_factory_make ("nvarguscamerasrc", "source");
@@ -536,25 +428,23 @@ main (int argc, char *argv[])
 	pgie = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
 	nvvidconv = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter");//from NV12 to RGBA
 	nvosd = gst_element_factory_make ("nvdsosd", "nv-onscreendisplay");
-	msgconv = gst_element_factory_make ("nvmsgconv", "nvmsg-converter");
-	msgbroker = gst_element_factory_make ("nvmsgbroker", "nvmsg-broker");
-	
+	fakesink = gst_element_factory_make ("fakesink", "fakesink");
+
 	tee2 = gst_element_factory_make ("tee", "nvsink-tee2");
 	parser = gst_element_factory_make ("h264parse", "parser");
-	depayer = gst_element_factory_make ("rtph264depay", "depay");
+	if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
+		g_printerr ("Failed to create smart record bin");
+		return -1;
+	}
 
 	if ( !pipeline || !source || !filter || !tee  
-		|| !nvstreammux || !pgie || !nvvidconv || !nvosd || !msgconv || !msgbroker
+		|| !nvstreammux || !pgie || !nvvidconv || !nvosd || !fakesink 
 		|| !queue || !nvvidconv_enet || !encoder || !payer || !enetsink) {
 		g_printerr ("One element could not be created. Exiting.\n");
 		return -1;
 	}
 
-	if (NvDsSRCreate (&nvdssrCtx, &params) != NVDSSR_STATUS_OK) {
-		g_printerr ("Failed to create smart record bin");
-		return -1;
-	}
-	if ( !tee2 || !parser || !depayer ) {
+	if ( !tee2 || !parser ) {
 		g_printerr ("New elements could not be created. Exiting.\n");
 		return -1;
 	}
@@ -584,21 +474,12 @@ main (int argc, char *argv[])
 	g_object_set (enetsink, "sync", FALSE, NULL);
 
 	g_object_set (G_OBJECT (nvstreammux), "batch-size", 1, NULL);
-	g_object_set (G_OBJECT (nvstreammux), 
-				"width", MUXER_OUTPUT_WIDTH, 
-				"height", MUXER_OUTPUT_HEIGHT,
-				"batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
+	g_object_set (  G_OBJECT (nvstreammux), 
+					"width", MUXER_OUTPUT_WIDTH, 
+					"height", MUXER_OUTPUT_HEIGHT,
+					"batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
 	g_object_set (G_OBJECT (pgie),
 		"config-file-path", PGIE_CONFIG_FILE, NULL);
-
-	g_object_set (G_OBJECT(msgconv), "config", MSCONV_CONFIG_FILE, NULL);
-	g_object_set (G_OBJECT(msgconv), "payload-type", schema_type, NULL);
-	g_object_set (G_OBJECT(msgconv), "msg2p-newapi", msg2p_meta, NULL);
-	g_object_set (G_OBJECT(msgconv), "frame-interval", frame_interval, NULL);
-
-	g_object_set (G_OBJECT(msgbroker), "proto-lib", proto_lib,
-                "sync", FALSE, NULL);
-	g_object_set (G_OBJECT(msgbroker), "config", cfg_file, NULL);
 
 
 	/* we add a message handler */
@@ -610,14 +491,10 @@ main (int argc, char *argv[])
 	/* we add all elements into the pipeline */
 	gst_bin_add_many (GST_BIN (pipeline),
 		source, filter, tee,
-		nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, 
+		nvstreammux, pgie, nvvidconv, nvosd, fakesink, 
 		queue, nvvidconv_enet, encoder, payer, enetsink,  NULL);
-	
-	gst_bin_add_many (GST_BIN (pipeline),
-		tee2, parser, depayer, NULL);
-	gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
 
-
+	gst_bin_add_many (GST_BIN (pipeline), tee2, parser, nvdssrCtx->recordbin, NULL);
 /************************************************************************/
 
 	tee_msg_pad = gst_element_get_request_pad (tee, "src_%u");
@@ -659,45 +536,54 @@ main (int argc, char *argv[])
 	gst_object_unref (tee_enet_pad);
 
 /************************************************************************/
+	GstPad *tee_msg_pad2 = NULL;
+	GstPad *muxer_sink_pad2 = NULL;
+	
 
-	tee2_enet_pad = gst_element_get_request_pad (tee2, "src_%u");
-	if (!tee2_enet_pad) {
+	tee_msg_pad2 = gst_element_get_request_pad (tee2, "src_%u");
+	if (!tee_msg_pad2) {
 		g_printerr ("Unable to get request pads\n");
 		return -1;
 	}
 
-	payer_sink_pad = gst_element_get_static_pad (payer, "sink");
-	if (!payer_sink_pad) {
+	muxer_sink_pad2 = gst_element_get_static_pad (payer, "sink");
+	if (!muxer_sink_pad2) {
 		g_printerr ("Streammux request sink pad failed. Exiting.\n");
 		return -1;
 	}
 
-	if (gst_pad_link (tee2_enet_pad, payer_sink_pad) != GST_PAD_LINK_OK) {
-		g_printerr ("Failed to link tee2 enet. Exiting.\n");
+	if (gst_pad_link (tee_msg_pad2, muxer_sink_pad2) != GST_PAD_LINK_OK) {
+		g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
 		return -1;
 	}
 
-	gst_object_unref (tee2_enet_pad);
-	gst_object_unref (payer_sink_pad); 
+	gst_object_unref (tee_msg_pad2);
+	gst_object_unref (muxer_sink_pad2); 
 
 /************************************************************************/
-	
-	tee2_record_pad = gst_element_get_request_pad (tee2, "src_%u");
-	parser_sink_pad = gst_element_get_static_pad (parser, "sink");
 
-	if (!parser_sink_pad || !tee2_record_pad) {
+	GstPad *tee_rec_pad2 = NULL;
+	GstPad *muxer_rec_pad2 = NULL;
+	
+	tee_rec_pad2 = gst_element_get_request_pad (tee2, "src_%u");
+	if (!tee_rec_pad2) {
 		g_printerr ("Unable to get request pads\n");
 		return -1;
 	}
 
-	if (gst_pad_link (tee2_record_pad,parser_sink_pad) != GST_PAD_LINK_OK) {
-		g_printerr ("Unable to link tee and message converter\n");
-		//gst_object_unref (sink_pad);
+	muxer_rec_pad2 = gst_element_get_static_pad (parser, "sink");
+	if (!muxer_rec_pad2) {
+		g_printerr ("Streammux request sink pad failed. Exiting.\n");
 		return -1;
 	}
 
-	gst_object_unref (parser_sink_pad);
-	gst_object_unref (tee2_record_pad);
+	if (gst_pad_link (tee_rec_pad2, muxer_rec_pad2) != GST_PAD_LINK_OK) {
+		g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
+		return -1;
+	}
+
+	gst_object_unref (tee_rec_pad2);
+	gst_object_unref (muxer_rec_pad2);
 
 /************************************************************************/
 
@@ -706,29 +592,26 @@ main (int argc, char *argv[])
 		return -1;
 	}
 
-	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, msgconv, msgbroker, NULL)) {
+	if (!gst_element_link_many (nvstreammux, pgie, nvvidconv, nvosd, fakesink, NULL)) {
 		g_printerr ("Elements could not be linked2. Exiting.\n");
 		return -1;
 	}
-	/*
-	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, payer, enetsink, NULL)) {
-		g_printerr ("Elements could not be linked3. Exiting.\n");
-		return -1;
-	}
-	*/
+  
 	if (!gst_element_link_many (queue, nvvidconv_enet, encoder, tee2, NULL)) {
 		g_printerr ("Elements could not be linked3. Exiting.\n");
 		return -1;
 	}
-
+	
 	if (!gst_element_link_many (payer, enetsink, NULL)) {
 		g_printerr ("Elements could not be linked4. Exiting.\n");
 		return -1;
 	}
+	
 	if (!gst_element_link_many (parser, nvdssrCtx->recordbin, NULL)) {
 		g_printerr ("Elements could not be linked5. Exiting.\n");
 		return -1;
 	}
+
 /************************************************************************/
 
 	const char client [64] = HOST_ENET;
@@ -742,14 +625,11 @@ main (int argc, char *argv[])
 	struct Coords recording;
 	recording = establish_connection("127.0.0.1",&port_record, 1);
 	struct Data *data = g_new0(struct Data, 1);
-	data->connect = recording;
+	data->coords = recording;
 	data->nvdssrctx = nvdssrCtx;
 	
 /************************************************************************/
 
-  /* Lets add probe to get informed of the meta data generated, we add probe to
-   * the sink pad of the osd element, since by that time, the buffer would have
-   * had got all the metadata. */
 	osd_sink_pad = gst_element_get_static_pad (nvosd, "sink");
 	if (!osd_sink_pad)
 	g_print ("Unable to get sink pad\n");
@@ -758,25 +638,24 @@ main (int argc, char *argv[])
 			gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
 				osd_sink_pad_buffer_probe, &send_messages, NULL);
     }
-
 	gst_object_unref (osd_sink_pad);
 
-	if (nvdssrCtx) {
-    g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
-        data);
-	}
 /************************************************************************/
-
-
+	
+	//g_timeout_add (1 * 1000, dummy, NULL);
+	
+	if (nvdssrCtx) {
+		g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator, data);
+	}
+	
   /* Set the pipeline to "playing" state */
 	g_print ("Now playing...\n");
 	gst_element_set_state (pipeline, GST_STATE_PLAYING);
-
+	
   /* Wait till pipeline encounters an error or EOS */
 	g_print ("Running...\n");
 	g_main_loop_run (loop);
 
-	
   /* Out of the main loop, clean up nicely */
 	g_print ("Returned, stopping playback\n");
 
@@ -793,9 +672,6 @@ main (int argc, char *argv[])
 
 	gst_element_set_state (pipeline, GST_STATE_NULL);
 	g_print ("Deleting pipeline\n");
-	/*******************************/
-	//g_print ("Average fps %f\n",((perf_measure.count-1)*src_cnt*1000000.0)/perf_measure.total_time);
-	/*******************************/
 	gst_object_unref (GST_OBJECT (pipeline));
 	g_source_remove (bus_watch_id);
 	g_main_loop_unref (loop);
