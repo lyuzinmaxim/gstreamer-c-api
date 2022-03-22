@@ -17,5 +17,7 @@ Macroses:
 - HOST_PORT_MSG - port to send UDP packets with metadata attached 
 - HOST_RECORD - port to listen for getting record start/stop commands
 
-
+Using sockets:
+- for metadata sending (server=0)
+- for receiving video start/stop messages (server=1) - INADDR_ANY
 
