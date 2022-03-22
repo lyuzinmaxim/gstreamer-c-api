@@ -182,3 +182,5 @@ I use SimpleRabbitmqClient (C++) over rammitmq-c (C) as consumer on host side.
 # 8. CSI camera as input, make inference & encoding & send custom metadata to custom & video saving from server command at the same time 
 
 Main part in 8.4 directory
+
+Runs datections & metadata sending at 30 FPS, encoded video also 30 FPS
