@@ -360,12 +360,15 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 				coord1->left = (int)obj_meta->rect_params.left;
 				coord1->width = (int)obj_meta->rect_params.width;
 				coord1->height = (int)obj_meta->rect_params.height;
-				g_print("FPS %f top %d left %d width %d height %d\n",
+				coord1->conf = (float)obj_meta->confidence;
+
+				g_print("FPS %f top %d left %d width %d height %d conf %f\n",
 					result,
 					coord1->top, 
 					coord1->left, 
 					coord1->width, 
-					coord1->height);
+					coord1->height,
+					coord1->conf);
 
 				send_bytes(*coord1);
 				}
