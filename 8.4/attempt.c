@@ -76,7 +76,16 @@ struct Data {
 };
 
 char* receive_payload(struct Coords * structure){
-    
+    /*
+	function, that waits (inf time) on socket for reading 
+	possibility	and if smth is ready reads the data.
+	
+	args: struct Coords * structure (in particular, int sockfd)
+	
+	returns: pointer to msg - incoming byte array
+	*/
+	
+	
 	struct pollfd pfds[1]; // More if you want to monitor more
     pfds[0].fd = structure->sockfd;          // Standard input
     pfds[0].events = POLLIN; 
@@ -108,6 +117,18 @@ char* receive_payload(struct Coords * structure){
 
 struct Coords establish_connection
 (const char *client,unsigned short int *port, int server){
+	/*
+	function, that creates an UDP socket, binds it
+	
+	args: 
+		*client, pointer to const char - IPv4 adress, from
+				which come datagrams
+		*port, pointer to unsigned short int - port to "listen"
+		
+	returns: instance of struct Coords with filled fields 
+			 sockfd, servaddr, cliaddr
+	*/
+	
 	
 	int sockfd;
 	struct sockaddr_in servaddr, cliaddr;
@@ -179,43 +200,54 @@ smart_record_callback (NvDsSRRecordingInfo * info, gpointer userData)
 static gboolean
 smart_record_event_generator (struct Data *  data)
 {
-  NvDsSRSessionId sessId = 0;
-  NvDsSRContext *ctx = (NvDsSRContext *) data->nvdssrctx;
-  guint startTime = START_TIME;
-  guint duration = SMART_REC_DURATION;
-  
-  char* msg;
-  msg = receive_payload(&data->coords);
-  guint run = 0;
-  
-  
-  if (run==0) {
-	  
-	if (msg[0] == 0xAA){
-			run = 1;
-	} else {
-			run = 0;
-	}
+	/*
+	function, that generates start/stop events for
+	video recording based on received messages
 	
-	if (run==1) {
-	  	if (ctx->recordOn) {
-	  	  g_print ("Recording done.\n");
-	  	  if (NvDsSRStop (ctx, 0) != NVDSSR_STATUS_OK)
-	  	    g_printerr ("Unable to stop recording\n");
-	  	} else {
-	  	  g_print ("Recording started..\n");
-	  	  if (NvDsSRStart (ctx, &sessId, startTime, duration,
-	  	          NULL) != NVDSSR_STATUS_OK)
-	  	    g_printerr ("Unable to start recording\n");
-	  	}
+	args: 
+		struct Data * data - pointer to Data struct instance,
+							 nvdssrctx and 
 		
-	} else {
-	    printf("ZERO was passed\n");
-	}
+	returns: bool, if true, pad probe works further
+	*/
 	
-  run = 0;
-  }
-  return TRUE;
+	NvDsSRSessionId sessId = 0;
+	NvDsSRContext *ctx = (NvDsSRContext *) data->nvdssrctx;
+	guint startTime = START_TIME;
+	guint duration = SMART_REC_DURATION;
+  
+	char* msg;
+	msg = receive_payload(&data->coords);
+	guint run = 0;
+  
+  
+	if (run==0) {
+		
+		if (msg[0] == 0xAA){
+			run = 1;
+		} else {
+			run = 0;
+		}
+	
+		if (run==1) {
+			if (ctx->recordOn) {
+			  g_print ("Recording done.\n");
+			  if (NvDsSRStop (ctx, 0) != NVDSSR_STATUS_OK)
+				g_printerr ("Unable to stop recording\n");
+			} else {
+			  g_print ("Recording started..\n");
+			  if (NvDsSRStart (ctx, &sessId, startTime, duration,
+					  NULL) != NVDSSR_STATUS_OK)
+				g_printerr ("Unable to start recording\n");
+			}
+			
+		} else {
+			printf("ZERO was passed\n");
+		}
+	
+	run = 0;
+	}
+	return TRUE;
 }
 
 void send_bytes(struct Coords coord){
