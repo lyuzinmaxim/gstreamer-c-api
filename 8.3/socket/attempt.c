@@ -21,14 +21,7 @@
 #define SMART_REC_INTERVAL 0.5
 
 #define PORT     8080
-#define CLIENT "127.0.0.1"
-
-static GMainLoop *loop = NULL;
-static GstElement *tee = NULL;
-static GstElement *converter = NULL;
-static GstElement *parser = NULL;
-static GstElement *pipeline = NULL;
-static NvDsSRContext *nvdssrCtx = NULL;
+#define CLIENT 	 "127.0.0.1"
 
 struct Connecting {
     int sockfd;
@@ -53,7 +46,7 @@ char* receive_payload(struct Connecting * structure){
     static char msg[512];
 	
 	printf("Hit RETURN or wait 2.5 seconds for timeout\n");
-    int num_events = poll(pfds, 1, 10000); // 2.5 second timeout
+    int num_events = poll(pfds, 1, -1); // inf timeout
 	
 	if (num_events == 0) {
 		printf("Poll timed out!\n");
@@ -209,7 +202,9 @@ int
 main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
+  GstElement *pipeline = NULL;
   GstElement *source, *filter, *depayer, *parser;
+  NvDsSRContext *nvdssrCtx = NULL;
   GstCaps *filtercaps;
   GstBus *bus = NULL;
   guint bus_watch_id;
@@ -224,14 +219,8 @@ main (int argc, char *argv[])
   params.fileNamePrefix = "testing";
   params.dirpath = "/home/maxim/Videos";
 
-  int current_device = -1;
-  cudaGetDevice(&current_device);
-  struct cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, current_device);
-
   gst_init (&argc, &argv);
   loop = g_main_loop_new (NULL, FALSE);
-
 
   pipeline = gst_pipeline_new ("dstest1-pipeline");
 
@@ -263,8 +252,7 @@ main (int argc, char *argv[])
 
   /* Adding to bin */
   gst_bin_add_many (GST_BIN (pipeline),
-      source, filter, depayer, parser, NULL);
-  gst_bin_add_many (GST_BIN (pipeline), nvdssrCtx->recordbin, NULL);
+      source, filter, depayer, parser, nvdssrCtx->recordbin, NULL);
 
   /* Bus and linking */
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
@@ -279,14 +267,8 @@ main (int argc, char *argv[])
     g_printerr ("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
-  //gst_element_sync_state_with_parent(parser2);
   
-  ///**********************///
-  //struct Connecting  *connect = g_new0(struct Connecting, 1);
-  //struct Args *args = g_new0(struct Args, 1);
-  //connect->sockfd = 10;
-
-  //printf("\nIt's:%d\n",connect->sockfd);
+  /**********************/
   
   struct Connecting connect;
   connect = establish_connection();
@@ -295,23 +277,8 @@ main (int argc, char *argv[])
   data->connect = connect;
   data->nvdssrctx = nvdssrCtx;
   
-  /*
-  struct Data data;
-  data.nvdssrctx = nvdssrCtx;
-  data.connect = connect;
-  */
- 
-  //calling(&connect);
+  /**********************/
   
- 
-  ///**********************///
-  
-  /*
-  if (nvdssrCtx) {
-    g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
-        nvdssrCtx);
-  }
-  */
   if (nvdssrCtx) {
     g_timeout_add (SMART_REC_INTERVAL * 1000, smart_record_event_generator,
         data);
