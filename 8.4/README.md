@@ -2,11 +2,11 @@ This structure is pure
 
                             |-> streammux -> pgie -> converter -> osd -> fakesink
     
-    source -> filter -> tee 
+    source -> filter -> tee                                          |-> payer -> enetsink
 
-                            |-> queue -> converter -> encoder -> tee  -> payer -> enetsink
+                            |-> queue -> converter -> encoder -> tee  
           
-                                                             |-> parser -> nvdssrCtx->recordbin 
+                                                                     |-> parser -> nvdssrCtx->recordbin 
 
 Macroses:
 
