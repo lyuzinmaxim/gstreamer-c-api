@@ -27,7 +27,6 @@
 
 #define PGIE_CLASS_ID 0
 #define PGIE_CONFIG_FILE  "infer_config.txt"
-#define MSCONV_CONFIG_FILE "dstest4_msgconv_config.txt"
 #define MUXER_OUTPUT_WIDTH 1920
 #define MUXER_OUTPUT_HEIGHT 1080
 
@@ -120,9 +119,16 @@ struct Coords establish_connection
         exit(EXIT_FAILURE);
     }
 	
-	servaddr.sin_family    = AF_INET; // IPv4
-    servaddr.sin_addr.s_addr = inet_addr(client);
-    servaddr.sin_port = htons(*port);
+	
+	if (server==0){
+		servaddr.sin_family    = AF_INET; // IPv4
+		servaddr.sin_addr.s_addr = inet_addr(client);
+		servaddr.sin_port = htons(*port);	
+	} else if (server==1){
+		servaddr.sin_family    = AF_INET; // IPv4
+		servaddr.sin_addr.s_addr = INADDR_ANY;
+		servaddr.sin_port = htons(*port);
+	}
 	
 	if (server==1){
 		if ( bind(sockfd, (const struct sockaddr *)&servaddr, 
