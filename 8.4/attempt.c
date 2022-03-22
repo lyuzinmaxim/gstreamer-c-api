@@ -372,8 +372,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 		  }
     }
   
-    /*g_print ("%d frame, %d objects\n",
-			frame_number, object_count);*/
+    g_print ("%d frame, %d objects\n", frame_number, object_count);
     frame_number++;
     return GST_PAD_PROBE_OK;
 }
