@@ -76,6 +76,11 @@ struct Data {
     struct Coords coords;
 };
 
+struct Eth_uart {
+    struct Coords eth;
+    struct Coords uart;
+};
+
 char* receive_payload(struct Coords * structure){
     /*
 	function, that waits (inf time) on socket for reading 
@@ -306,7 +311,7 @@ void send_bytes(struct Coords coord){
 
 static GstPadProbeReturn
 osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
-    gpointer u_data)
+    struct Eth_uart *u_data)
 {
     GstBuffer *buf = (GstBuffer *) info->data;
     NvDsFrameMeta *frame_meta = NULL;
@@ -349,7 +354,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 				
 				if (!(frame_number % frame_interval)) {
 
-				struct Coords *coord1 = u_data;
+				struct Coords *coord1 = &u_data->eth;
 				
 				t1 = coord1->time_buf;
 				t2 = g_get_monotonic_time();
@@ -370,8 +375,17 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 					coord1->width, 
 					coord1->height,
 					coord1->conf);
-
+				
+				struct Coords *coord2 = &u_data->uart;
+				coord2->frame = frame_number;
+				coord2->top = (int)obj_meta->rect_params.top;
+				coord2->left = (int)obj_meta->rect_params.left;
+				coord2->width = (int)obj_meta->rect_params.width;
+				coord2->height = (int)obj_meta->rect_params.height;
+				coord2->conf = (float)obj_meta->confidence;
+				
 				send_bytes(*coord1);
+				send_bytes(*coord2);
 				}
 		  }
     }
@@ -671,8 +685,13 @@ main (int argc, char *argv[])
 	data->nvdssrctx = nvdssrCtx;
 	
 	struct Coords uart;
-	//uart = establish_connection("127.0.0.1",&port_uart, 0);
 	uart = establish_connection(client,&port_uart, 0);
+	
+	// Nested structure for simultaneously sending via uart & ethernet
+	
+	struct Eth_uart eth_uart;
+	eth_uart.eth = send_messages;
+	eth_uart.uart = uart;
 	
 /************************************************************************/
 
@@ -681,21 +700,10 @@ main (int argc, char *argv[])
 	g_print ("Unable to get sink pad\n");
 	else {
 		gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-				osd_sink_pad_buffer_probe, &send_messages, NULL);
+				osd_sink_pad_buffer_probe, &eth_uart, NULL); //passing nested structure
     }
 	gst_object_unref (osd_sink_pad);
 
-/************************************************************************/
-	osd_sink_pad2 = gst_element_get_static_pad (nvosd, "sink");
-	if (!osd_sink_pad2) {
-		g_print ("Unable to get sink pad2\n");
-	}
-	gst_pad_add_probe (osd_sink_pad2, GST_PAD_PROBE_TYPE_BUFFER,
-				osd_sink_pad_buffer_probe, &uart, NULL);
-	
-	gst_object_unref (osd_sink_pad);
-				
-				
 /************************************************************************/
 	//g_timeout_add (1 * 1000, dummy, NULL);
 	
