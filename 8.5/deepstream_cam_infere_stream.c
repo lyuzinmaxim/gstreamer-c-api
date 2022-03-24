@@ -339,8 +339,12 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 		  //g_print("\nEMPTY\n");
 		  continue;
 		}
+		
 		struct Coords *coord1 = &u_data->eth;
+		
 		struct Coords *coord2 = &u_data->uart;
+		coord2->conf = 0.001;
+
 		for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
 			
 			NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
@@ -377,20 +381,22 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 					coord1->height,
 					coord1->conf);
 				
-				struct Coords *coord2 = &u_data->uart;
 				coord2->frame = frame_number;
-				if ((float)obj_meta->confidence > coord2->conf)
+				if ((float)obj_meta->confidence > coord2->conf){
 					coord2->top = (int)obj_meta->rect_params.top;
 					coord2->left = (int)obj_meta->rect_params.left;
 					coord2->width = (int)obj_meta->rect_params.width;
 					coord2->height = (int)obj_meta->rect_params.height;
 					coord2->conf = (float)obj_meta->confidence;
-				
+				}
 				send_bytes(*coord1); //sends via eth for every object
 				}
 		}
+
 		send_bytes(*coord2); //sends vie uart for more confident object per frame 
+		
     }
+	
     g_print ("%d frame, %d objects\n", frame_number, object_count);
     frame_number++;
     return GST_PAD_PROBE_OK;
