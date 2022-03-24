@@ -339,7 +339,8 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 		  //g_print("\nEMPTY\n");
 		  continue;
 		}
-				
+		struct Coords *coord1 = &u_data->eth;
+		struct Coords *coord2 = &u_data->uart;
 		for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
 			
 			NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
@@ -354,7 +355,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 				
 				if (!(frame_number % frame_interval)) {
 
-				struct Coords *coord1 = &u_data->eth;
+				//struct Coords *coord1 = &u_data->eth;
 				
 				t1 = coord1->time_buf;
 				t2 = g_get_monotonic_time();
@@ -372,22 +373,23 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 					result,
 					coord1->top, 
 					coord1->left, 
-					coord1->width, 
+					coord1->width,
 					coord1->height,
 					coord1->conf);
 				
 				struct Coords *coord2 = &u_data->uart;
 				coord2->frame = frame_number;
-				coord2->top = (int)obj_meta->rect_params.top;
-				coord2->left = (int)obj_meta->rect_params.left;
-				coord2->width = (int)obj_meta->rect_params.width;
-				coord2->height = (int)obj_meta->rect_params.height;
-				coord2->conf = (float)obj_meta->confidence;
+				if ((float)obj_meta->confidence > coord2->conf)
+					coord2->top = (int)obj_meta->rect_params.top;
+					coord2->left = (int)obj_meta->rect_params.left;
+					coord2->width = (int)obj_meta->rect_params.width;
+					coord2->height = (int)obj_meta->rect_params.height;
+					coord2->conf = (float)obj_meta->confidence;
 				
-				send_bytes(*coord1);
-				send_bytes(*coord2);
+				send_bytes(*coord1); //sends via eth for every object
 				}
-		  }
+		}
+		send_bytes(*coord2); //sends vie uart for more confident object per frame 
     }
     g_print ("%d frame, %d objects\n", frame_number, object_count);
     frame_number++;
