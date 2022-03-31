@@ -34,3 +34,5 @@ returns: instance of struct Coords with filled fields
 args: struct Coords coods - filled strcuture with IP&port to send to
 
 - osd_sink_pad_buffer_probe - function that takes the metadata from gstreamer (deepstream) buffer and calls ```send_bytes```
+
+- bus_call - default gstreamer function
