@@ -42,3 +42,7 @@ function that takes the metadata from gstreamer (deepstream) buffer and calls ``
 
 ## bus_call 
 default gstreamer function
+
+
+pscp maxim@maxim-desktop:/home/maxim/gstreamer-c-api/7/infer* C:\...
+
