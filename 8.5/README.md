@@ -32,7 +32,8 @@ returns: instance of struct Coords with filled fields
     
 ## smart_record_callback 
 function used in NvDsSRContext initialization parameters
-- send_bytes - void function that generates a UDP data packet and sends them to host
+## send_bytes 
+void function that generates a UDP data packet and sends them to host
 
 args: struct Coords coods - filled strcuture with IP&port to send to
 
