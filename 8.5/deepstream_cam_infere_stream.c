@@ -36,6 +36,7 @@
 #define START_TIME 0
 #define SMART_REC_DURATION 100
 #define SMART_REC_INTERVAL 0.5
+#define VIDEO_DIRECTORY "/home/maxim/Videos"
 			
 #define HOST_ENET 		"192.168.0.107"
 #define HOST_RECORD 	8080
@@ -468,7 +469,7 @@ main (int argc, char *argv[])
 	params.defaultDuration = SMART_REC_DEFAULT_DURATION;
 	params.callback = smart_record_callback;
 	params.fileNamePrefix = "testing";
-	params.dirpath = "/home/maxim/Videos";
+	params.dirpath = VIDEO_DIRECTORY;
 		
 	gst_init (&argc, &argv);
 
