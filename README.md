@@ -186,3 +186,9 @@ Main part in 8.4 directory
 Runs datections & metadata sending at 30 FPS, encoded video also 30 FPS
 
 UART support is in directory 8.5
+
+
+
+# Tips
+
+Don't use 
