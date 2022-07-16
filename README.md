@@ -191,4 +191,4 @@ UART support is in directory 8.5
 
 # Tips
 
-Don't use 
+Don't use ```gst_caps_new_simple```, but ```gst_caps_from_string```
